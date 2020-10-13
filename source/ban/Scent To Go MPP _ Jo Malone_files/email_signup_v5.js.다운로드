@@ -1,0 +1,104 @@
+var generic = generic || {};
+var site = site || {};
+
+(function ($) {
+
+  site.globalnav = {
+    initEmailSignup : function() {
+      var emailOptStatusNode = $('#address-info-newsletter'),
+        emailFormNodes = $('div.email-signup-container').find('form');
+      if (!emailFormNodes.length) {
+        return null;
+      }
+      emailFormNodes.not('.email-form-processed').addClass('email-form-processed').bind('submit', function(submitEvt) {
+        submitEvt.preventDefault();
+
+        var emailSubmitNode, emailProgressNode, emailSuccessNode, emailErrorNode, emailInputNode, emailSubmissionOption, emailRedirectURL, myContainerNode, myBlockNode,
+          myEmailFormNode = $(submitEvt.currentTarget);
+
+        emailSubmitNode = myEmailFormNode.find("input[type='submit']").addClass('hidden');
+        emailProgressNode = myEmailFormNode.find('div.progress').removeClass('hidden');
+        emailSuccessNode = myEmailFormNode.find('div.success');
+        emailErrorNode = myEmailFormNode.find('div.error');
+        emailInputNode = myEmailFormNode.find('input.email-signup');
+        emailSubmissionOption = myEmailFormNode.find("input[name='redirect_or_text']");
+        emailRedirectURL = myEmailFormNode.find("input[name='redirect']");
+        myContainerNode = myEmailFormNode.parents("div.email-signup-container"),
+        myBlockNode = myContainerNode.find('.signup-block');
+
+        // retrieve form data in querystring format
+        var formSerial = myEmailFormNode.serialize();
+        console.log("formSerial: " + formSerial);
+        // transform string into array of form elements
+        var paramArr = formSerial.split("&"),
+          paramStr = '';
+
+        // iterate through collection to transform form name/value into key/value properties of a literal object string.
+        $.each(paramArr, function(index){
+          paramStr += '"'+ this.split('=')[0] + '":"' + this.split('=')[1] + '",';
+        });
+
+        // parse the string and create the literal object
+        var params = eval("(" + "{"+paramStr.substring(0,(paramStr.length-1)).replace("undefined","").replace("%40","@")+"}" + ")");
+
+        // remove the 2 hidden inputs we're using to handle the redirect
+        params.redirect = undefined;
+        params.redirect_or_text = undefined;
+
+        if ($.cookie('csrftoken')) {
+          params._TOKEN = $.cookie('csrftoken');
+        }
+        // send the data via a json rpc call
+        generic.jsonrpc.fetch({
+          method: 'rpc.form',
+          params: [params],
+          onSuccess: function(jsonRpcResponse) {
+            if (emailSubmissionOption.val() === 'redirect' && emailRedirectURL.val().length > 0) {
+              // Redirect the current page to another
+              var dest = emailRedirectURL.val();
+
+              if (/^\/.+$/.test(dest)) {
+                dest = dest.replace(/^(\s|\/)+/, '');
+              }
+
+              if (/^(?!http|\/).+$/.test(dest)) {
+                dest = Drupal.settings.basePath + dest;
+              }
+
+              window.location.href = dest;
+              return false;
+            }
+            else {
+              // Show success messages within this template
+              emailProgressNode.addClass('hidden');
+              emailErrorNode.addClass('hidden');
+              emailInputNode.addClass('hidden');
+              myContainerNode.addClass('email_success');
+              emailSuccessNode.prependTo(myBlockNode).removeClass('hidden');
+              myEmailFormNode.addClass('hidden');
+            }
+          },
+          onFailure: function(jsonRpcResponse){
+            // Add the error messages below the header
+            var errorObjectsArray = jsonRpcResponse.getMessages();
+
+            // Show error messages in this template
+            emailErrorNode.html(errorObjectsArray[0].text).removeClass('hidden');
+            emailProgressNode.addClass('hidden');
+            emailSubmitNode.removeClass('hidden');
+            emailInputNode.addClass('error');
+            myContainerNode.removeClass('email_success');
+            $('.js-email-error').focus();
+          }
+        });
+      });
+    }
+  };
+
+  Drupal.behaviors.emailSignup = {
+    attach: function (context, settings) {
+      site.globalnav.initEmailSignup();
+    }
+  };
+
+})(jQuery);

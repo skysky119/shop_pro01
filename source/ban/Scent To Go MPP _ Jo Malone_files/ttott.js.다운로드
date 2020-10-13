@@ -1,0 +1,197 @@
+(function($) {
+
+Drupal.behaviors.ttottRing = {
+  attached: false,
+  tr_data: null,
+  tr_namespace: null,
+  overlay_appended: false,
+  waiting_on_overlay: false,
+
+  overlay: function() {
+
+    // not currently waiting on overlay return and don't currently
+    // have it
+    if(!this.waiting_on_overlay && !this.overlay_appended) {
+      this.waiting_on_overlay = true;
+      this.get_overlay_partial();
+      return;
+    }
+
+    if(!this.overlay_appended) {
+      console.warn("We should never have gotten here");
+      return;
+    }
+    var locales = TranslationRing.locales;
+
+    var content = $('#ttott-switcher');
+    this.waiting_on_overlay = false;
+
+    // adding a small delay because overlay needs the
+    // content to be processed via css so it is sized
+    // correctly
+    window.setTimeout(function() {
+      TranslationRing.show_overlay({
+        'locales': locales,
+        'content': content, // note overlay deletes dom;
+      })}, 300);
+  },
+
+  get_overlay_partial: function(callback) {
+    console.log('getting overlay partial');
+
+    var accept_langs = TranslationRing.gather_languages();
+    var langs_string = accept_langs[0]; // for now default to top lang
+
+    var url = '/ttott-switcher/lang/' + langs_string;
+
+    // if we have geo data use that.
+    if(JomTTOTT.geo_data) {
+      var country = JomTTOTT.geo_data['edgescape']['country_code'];
+      url = '/ttott-switcher/geo/' + country;
+    }
+
+    var func = callback;
+    var that = this;
+    jQuery.ajax({
+      url: url,
+      success: function(data, status, xhr) {
+        console.log('received overlay partial');
+        jQuery(document).trigger('ttott-switcher-returned', [data]);
+      },
+    });
+  },
+
+  check_status: function() {
+    if (JomTTOTT.geo_called && JomTTOTT.geo_data === null) {
+      console.log('waiting on geo');
+      var that = this;
+      window.setTimeout(function() { that.check_status(); }, 200);
+      return;
+    }
+    if (this.tr_data == null) {
+      console.log('waiting on tr data');
+      return;
+    }
+    var namespace = this.tr_namespace;
+    var rings = this.tr_data[namespace];
+    var keys = Object.keys(rings);
+    var ring_key = keys[0];
+    var ring = rings[ring_key];
+
+    var locales = {};
+    for(locale in ring) {
+      locales[locale] = ring[locale][0];
+    }
+
+    TranslationRing.locales = locales;
+
+    if(TranslationRing.getParameterByName('force_overlay', window.location.href) !== null) {
+      this.overlay();
+      console.log('overlay');
+      return
+    }
+
+    // Check cookie. If cookie locale is different than page we are on,
+    // redirect us to the correct page. Like the url_locale handling,
+    // this is handled by the server and this code will not run if the server
+    // does it first.
+    var cookie_locale = TranslationRing.get_locale('ttott');
+    if(cookie_locale) {
+      var target_url = TranslationRing.choose_locale(locales, cookie_locale);
+      if (target_url) {
+        target_url = TranslationRing.add_locale_to_url(target_url, namespace, cookie_locale);
+        window.location.replace(target_url);
+      }
+      return;
+    }
+
+    if (JomTTOTT.geo_data) {
+      // if we match exactly on the domain we are in. Assume
+      // that we want that domain.
+      var current_lang = TranslationRing.current_lang;
+      var match_all = JomTTOTT.geo_data['match_all'];
+      for(locale in match_all) {
+        if(locale == current_lang) {
+          TranslationRing.set_locale('ttott', locale);
+          return
+        }
+      }
+    }
+
+    if (JomTTOTT.settings['current_lang'] != JomTTOTT.settings['geotarget_domain']) {
+      console.log('not on geotarget domainl');
+      return;
+    }
+
+    var accept_languages = JomTTOTT.gather_languages();
+    // short circuit if we have GB language
+    if(accept_languages[0] == 'en-GB') {
+      return;
+    }
+
+    // We need to set our cookie. Overlay time.
+    this.overlay();
+  },
+
+  attach: function(context) {
+    if (this.attached) {
+      return;
+    }
+    this.attached = true;
+
+    // This will set the locale to ?ttott-tr-lang=$lang
+    // it will then redirect and remove the query
+    // NOTE: this only happens if the server doesn't do it first.
+    // We normally want the server to take care of this. JS requires
+    // we wait for DOM to load.
+    var current_url = window.location.href;
+    var url_locale = TranslationRing.get_locale_from_url(current_url, 'ttott');
+    if(url_locale) {
+      TranslationRing.set_locale('ttott', url_locale);
+      var new_url = TranslationRing.remove_locale_to_url(current_url, 'ttott');
+      var url_parts = TranslationRing.getUrlParts(new_url);
+      var relative_path = url_parts['pathname'] + url_parts['search'] + url_parts['hash'];
+      if (history.pushState) {
+        history.pushState({}, "", relative_path);
+      } else {
+        window.location.replace(new_url);
+      }
+    }
+
+    // is the ttott translation ring active for this node?
+    var ring_key = TranslationRing.get_ring_key('ttott');
+    if(!ring_key) {
+      return;
+    }
+
+    var switcher_key = TranslationRing.get_ring('ttott_switcher');
+
+    var current_locale = TranslationRing.get_locale('ttott');
+
+    var that = this;
+
+    TranslationRing.get_ring('ttott');
+
+    var ttott = this;
+
+    $(document).on('translation-ring', function (event, namespace, data) {
+      ttott.tr_data = data;
+      ttott.tr_namespace = namespace;
+      ttott.check_status();
+    });
+
+    $(document).on('ttott-switcher-returned', function(event, data) {
+      var part = $(data);
+      var container = $('<div style="display:none" id="ttott-switcher-container">');
+      container.append(part);
+      $('body').append(container);
+      console.log('overlay appended');
+      ttott.overlay_appended = true;
+      if (ttott.waiting_on_overlay) {
+        ttott.overlay();
+      }
+    });
+  },
+};
+
+})(jQuery);

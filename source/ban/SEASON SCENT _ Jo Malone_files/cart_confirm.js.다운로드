@@ -1,0 +1,281 @@
+var site = site || {};
+var Mustache = Mustache || {};
+(function($) {
+  site.cartConfirm = site.cartConfirm || {};
+
+  var template = $('script.inline-template[path="cart_confirm"]').html();
+
+  var content = $($('script.inline-template[path="quickshop"]').html());
+
+  var bottle_rb = $('#bottle_rb', content).val();
+  var lid_rb = $('#lid_rb', content).val();
+  var candle_rb = $('#candle_rb', content).val();
+
+  var $cartConfirmWrapper = $('.gnav-cart-dropdown');
+  var $cartConfirm = $('.gnav-item-content', $cartConfirmWrapper);
+  var gnavSub = $cartConfirmWrapper.find('.gnav-item-content');
+
+  var originalStateCheck = false;
+
+  site.cartConfirm.launch = function(args) {
+    var cartItems = args.items;
+    var trans = args.trans;
+    var templateData = { items: [] };
+    var cartItem;
+    var engraving_price;
+    var min_item;
+
+    // utility functions
+    var convertToTextInfoForEngravingType = function(engrave_type) {
+      var textinfo;
+
+      switch (engrave_type) {
+        case '1': textinfo = lid_rb; break;
+        case '2': textinfo = bottle_rb; break;
+        case '3': textinfo = candle_rb; break;
+        case '4': textinfo = bottle_rb; break;
+        default: textinfo = bottle_rb;
+      }
+      // override arg
+      if (!!arguments[1]) {
+        switch (arguments[1]) {
+          default: textinfo = bottle_rb;
+        }
+      }
+      return textinfo;
+    };
+
+    // set true based on init zero count state
+    if (cartItems.length === 1) {
+      originalStateCheck = true;
+    }
+
+    // Normalize key names in cartItem object. 'prod.PROD_RGN_NAME' --> 'prod_PROD_RGN_NAME'
+    for (var i = 0; i < cartItems.length; i++) {
+      cartItem = cartItems[i];
+      templateData.items[i] = {};
+      var key;
+      for (key in cartItem) {
+        // normalizing complicated engraving data hash
+        if (!!cartItem.engraving && !!cartItem.engraving.engraved_sku) {
+          templateData.engraved_details = {};
+
+          for (key in cartItem.engraving) {
+            templateData.items[i].engraved_item = {};
+            templateData.items[i].engraved_item[key.replace(/\./, '_') ] = cartItem.engraving[key];
+          }
+          for (key in cartItem) {
+            templateData.items[i].engraved_item[key.replace(/\./, '_') ] = cartItem[key];
+            templateData.engraved_details[key.replace(/\./, '_') ] = cartItem[key];
+          }
+          for (key in cartItem.engraving.engraved_sku) {
+            templateData.items[i].engraved_item[key.replace(/\./, '_') ] = cartItem.engraving.engraved_sku[key];
+          }
+          templateData.items[i].engraved_item.Item_Type = convertToTextInfoForEngravingType(templateData.items[i].engraved_item.COLLECTION_NAME.split(':')[1]);
+
+          if (cartItem.hasEngraving) {
+            engraving_price = cartItem.items[0].APPLIED_PRICE > cartItem.items[1].APPLIED_PRICE ? cartItem.items[1].formattedAppliedPrice : cartItem.items[0].formattedAppliedPrice;
+            templateData.items[i].engraved_item.engraving_price = engraving_price;
+          }
+
+          // ALWAYS use the sku level image for the item, the product one is set separately and could be wrong for the sku even if there is only
+          // one sku active
+          templateData.items[i].engraved_item.prod_THUMBNAIL_IMAGE = templateData.items[i].engraved_item.sku_THUMBNAIL_IMAGE;
+          templateData.items[i].engraved_item.prod_PROD_RGN_NAME = '<span>' + templateData.items[i].engraved_item.prod_SUB_LINE + '</span><br/><span lang="en_kr">' + templateData.items[i].engraved_item.prod_PROD_RGN_NAME + '</span>';
+        }
+
+        if (cartItem.hasOwnProperty(key)) {
+          if (key === 'prod.PROD_RGN_NAME') {
+            templateData.items[i][ key.replace(/\./, '_') ] = '<span>' + cartItem['prod.SUB_LINE'] + '</span><br/><span lang="en_kr">' + cartItem['prod.PROD_RGN_NAME'] + '</span>';
+          } else {
+            templateData.items[i][ key.replace(/\./, '_') ] = cartItem[key];
+          }
+        }
+      }
+      if (templateData.items[i]['COLLECTION_SUBTYPE'] === 'BESPOKE') {
+        templateData.items[i]['ISGIFTKIT'] = 1;
+        templateData.items[i]['sku_isGiftwrapItem'] = 0;
+      }
+      // Non-engraved items should use the sku level image too
+      templateData.items[i].prod_THUMBNAIL_IMAGE = templateData.items[i].sku_THUMBNAIL_IMAGE;
+      // establish 1st and only displayable item //
+      templateData.oneAndOnlyEngraveUtilItem = templateData.items[0].engraved_item;
+      if (templateData.oneAndOnlyEngraveUtilItem) {
+        templateData.Item_Type = convertToTextInfoForEngravingType(templateData.oneAndOnlyEngraveUtilItem.COLLECTION_NAME.split(':')[1]);
+      }
+      if (templateData.items[i]['prod_skuCount'] > 1) {
+        templateData.items[i]['prod_THUMBNAIL_IMAGE'] = templateData.items[i]['sku_THUMBNAIL_IMAGE'];
+      }
+      if (cartItem.itemType === 'KitItem' && (!cartItem.hasEngraving || !cartItem.engraving)) {
+        templateData.items[i]['prod_THUMBNAIL_IMAGE'] = '/media/export/cms/products/66x76/gift-box.jpg';
+        templateData.items[i]['prod_PROD_RGN_NAME'] = cartItem.COLLECTION_NAME.replace(/\([0-9]*\)$/, '');
+        if (cartItem.formattedPrice) {
+          templateData.items[i]['formattedAppliedPrice'] = cartItem.formattedPrice;
+        }
+        templateData.items[i]['ITEM_QUANTITY'] = '1';
+      }
+    }
+
+    templateData.engraved_itemized_pairs = [];
+    var x;
+    for (x = 0; x < templateData.items.length; x++) {
+      if (!!templateData.items[x].engraved_item) {
+        templateData.engraved_itemized_pairs.push(templateData.items[x].engraved_item.items);
+      }
+    }
+
+    if (!!trans) {
+      // js middle object area changes for engrave products
+      templateData.formattedSubtotal = trans.formattedSubtotal;
+      templateData.items_count = trans.items_count;
+    }
+
+    // pluck min due to volatile order //
+    templateData.engraved_itemized_min = [];
+    for (x = 0; x < templateData.engraved_itemized_pairs.length; x++) {
+      min_item = templateData.engraved_itemized_pairs[x][0].APPLIED_PRICE < templateData.engraved_itemized_pairs[x][1].APPLIED_PRICE ?
+        templateData.engraved_itemized_pairs[x][0].APPLIED_PRICE : templateData.engraved_itemized_pairs[x][1].APPLIED_PRICE;
+
+      templateData.engraved_itemized_min.push(min_item);
+      if (!!templateData.items[x].engraved_item) {
+        templateData.items[x].engraved_item.engraved_itemized_min_value = min_item;
+      }
+    }
+
+    $cartConfirm.html(Mustache.render(template, templateData));
+
+    // post template //
+
+    var htmm = $('.engraved-text');
+    if (!!htmm) {
+      htmm.each(function() {
+        this.innerHTML = this.innerHTML.replace('[br]', '<br>');
+      });
+    }
+    var engravePrice = $('.right-copy-engraved .price');
+    if (!!engravePrice) {
+      engravePrice.each(function() {
+        this.innerHTML = this.innerHTML.replace('¥', '');
+      });
+    }
+    $('a.close, .buttons .left-copy a', $cartConfirm).bind('click', function(e) {
+      e.preventDefault();
+      $cartConfirmWrapper.removeClass('hover');
+
+      if ($('html').hasClass('no-csstransitions')) {
+        gnavSub.fadeOut('slow');
+      }
+    });
+
+    $('.buttons .left-copy a', $cartConfirm).bind('click', function(e) {
+      e.preventDefault();
+      $cartConfirmWrapper.removeClass('hover');
+
+      if ($('html').hasClass('no-csstransitions')) {
+        gnavSub.fadeOut('slow');
+      }
+
+      $cartConfirmWrapper.find('.gnav-item-content').hide();
+    });
+
+    if (originalStateCheck === true) { //templateData.items_count == 1) {
+      $('.gnav-item-content', '.gnav-cart-dropdown').css({display: 'block', visibility: 'visible', opacity: 1});
+      $('.chat-cart-checkout-text').bind('hover', function() {
+        $('.gnav-item-content', '.gnav-cart-dropdown').show(); //css({display:'block',visibility:'visible',opacity:1});
+      });
+      $('.cart-confirm-wrapper').find('a.close').click(function() {
+        $('.gnav-item-content', '.gnav-cart-dropdown').hide();
+      });
+
+      $('.gnav-cart-dropdown').find('.chat-cart-item-count').html(templateData.items_count);
+    }
+    if (templateData.items_count !== 1) {
+      $('.items', $cartConfirm).addClass('plural');
+    }
+
+    // If an item was just added, move it to the top of the products and give it a special class
+    if (typeof args.newItemID != 'undefined') {
+      $('.prod-' + args.newItemID, $cartConfirm).addClass('last-item-added').prependTo('.cart-overlay-products');
+    }
+  };
+
+  Drupal.behaviors.cartConfirm = {
+    attach: function() {
+      $(document).bind('addToCart.success', function(e, cartResult) {
+        var itemId = undefined;
+        var itemType = cartResult.ac_results[0].type;
+        if (itemType.match(/UKIT/i)) {
+          itemId = cartResult.ac_results[0].result.COLLECTION_ID;
+        } else {
+          itemId = cartResult.ac_results[0].result.CARTITEM['prod.PRODUCT_ID'];
+        }
+        $cartConfirm.removeClass('empty');
+        var args = {
+          trans: cartResult.trans_data,
+          items: cartResult.trans_data.order.items,
+          newItemID: itemId
+        };
+
+        site.cartConfirm.launch(args);
+        $cartConfirmWrapper.addClass('hover');
+
+        $cartConfirmWrapper.css({opacity: 1, visibility: 'visible'});
+
+        if ($('html').hasClass('no-csstransitions')) {
+          gnavSub.fadeIn('slow');
+        }
+      });
+
+      $(document).bind('addEngravingToCartFromMobile.success', function() {
+        var currentCartCnt = $('.gnav-cart-dropdown').find('.chat-cart-item-count').html();
+        currentCartCnt = parseInt(currentCartCnt);
+        currentCartCnt += 1;
+        $('.gnav-cart-dropdown').find('.chat-cart-item-count').html(currentCartCnt);
+      });
+
+      $(document).bind('addEngravingToCart.success', function(e, jsonRpcResponse) {
+        var cartResults = jsonRpcResponse.getCartResults();
+        var resultData = jsonRpcResponse.getData();
+
+        var alles = cartResults.getAllItems();
+
+        $cartConfirm.removeClass('empty');
+        var args = {
+          trans: resultData.trans_data,
+          items: alles,
+          newItemID: ''
+        };
+
+        site.cartConfirm.launch(args);
+        $cartConfirmWrapper.addClass('hover');
+        $cartConfirmWrapper.css({opacity: 1, visibility: 'visible', display: 'block'});
+
+        var currentCartCnt = $('.gnav-cart-dropdown').find('.chat-cart-item-count').html();
+        currentCartCnt = parseInt(currentCartCnt);
+        currentCartCnt += 1;
+        $('.gnav-cart-dropdown').find('.chat-cart-item-count').html(currentCartCnt);
+
+        if ($('html').hasClass('no-csstransitions')) {
+          gnavSub.fadeIn('slow');
+        }
+
+        $(document).trigger('cart.loaded', resultData.trans_data);
+      });
+
+      $(document).bind('cart.loaded', function(event, cartResult) {
+        if (cartResult === undefined || !cartResult.order.items.length) {
+          $cartConfirm.addClass('empty');
+          return;
+        } else {
+          $cartConfirm.removeClass('empty');
+        }
+        var args = {
+          trans: cartResult,
+          items: cartResult.order.items
+        };
+
+        site.cartConfirm.launch(args);
+      });
+    }
+  };
+})(jQuery);

@@ -1,0 +1,112 @@
+(function ($) {
+
+Drupal.behaviors.mainNavWrapperV1 = {
+  attach: function(context, settings) {
+    var undef;
+    var $formatter = $('.main-nav-wrapper-v1'),
+        $menu      = $formatter.children('ul.menu'),
+        $topItems  = $menu.children('li'),
+        currPath   = window.location.pathname;
+
+    // Remove "empty" li's
+    $formatter.filter(':empty').remove();
+
+    // Find all main (top-level) links that have an 'active' class, then add an 'active' to the child anchor tag
+    // The initial 'active' class is added from the variables_alter hook. Refer to that hook for any issues.
+    $formatter
+      .find('.main-link')
+      .filter('.active')
+      .children('a')
+      .addClass('active');
+
+    // Add appropriate 'first' and 'last' classes to the top-level items
+    $menu
+     .children('.menu-item')
+     .first()
+     .addClass('first')
+     .end()
+     .last()
+     .addClass('last');
+
+    // Trigger the drop-downs to appear on hover, but only if the hoverIntent plugin is enabled
+    if ($.isFunction($.fn.hoverIntent)) {
+      $topItems.hoverIntent({
+        over: function() {
+          var $li = $(this);
+
+          // Add 'hover' class to the main link
+          $li.find('.main-link, .main-link a').addClass('hover');
+
+          // Slide down the mega menu
+          $li.find('.drop-down').slideDown('slow');
+        },
+        out: function() {
+          var $li = $(this);
+
+          // Remove 'hover' class from the main link
+          $li.find('.main-link, .main-link a').removeClass('hover');
+
+          // Hide the mega menu
+          $(this).find('.drop-down').hide('fast');
+        },
+        timeout: 135
+      });
+    }
+
+    // The following code handles cases where the same link appears within 2 different drop-downs, but the top-level link
+    // that a user following to arrive at a page needs to be the only "active" one.
+
+    // For each link in the drop-downs, attach a click event handler that sets a cookie with the index of the top level item
+    $topItems.each(function(idx) {
+      $(this).find('.drop-down').find('a').click(function(e) {
+        $.cookie('top_item_index', 'item-' + idx, { path: '/' });
+      });
+    });
+
+    // Loop through each of the top-level items
+    // If it has the 'active' class, AND it matches the index from the 'top_item_index' cookie, then store the index for future use
+    var topItemIndex = $.cookie('top_item_index'),
+        topItemIndex = ((topItemIndex !== undef) ? topItemIndex.replace('item-', '') : ''),
+        activeIndex  = -1;
+
+    $topItems.find('.main-link').each(function(idx) {
+      if ($(this).hasClass('active') && (idx == topItemIndex)) {
+        activeIndex = idx;
+      }
+    });
+
+    // If there is no active index, and there is more than 1 active item,
+    // then let's grab the 1st active item and remove the "active" class from all others
+    if (activeIndex == -1) {
+      var $activeItems = $topItems.find('.main-link.active');
+
+      if ($activeItems.length > 1) {
+        $topItems
+          .find('.main-link.active')
+          .not( $activeItems.get(0) )
+          .removeClass('active')
+          .find('a')
+          .removeClass('active');
+      }
+    }
+
+    // Remove the active class for all top-level items except the "active" one
+    if (activeIndex >= 0) {
+      $topItems.filter(function () {
+        return $(this).index() != activeIndex;
+      }).find('.main-link, .main-link a').removeClass('active');
+    }
+
+    // Remove the cookie for good measure
+    // $.removeCookie('top_item_index');
+
+    // Match any links in the "active" drop-down whose href path matches the current page's URL
+    $topItems
+      .find('.main-link.active')
+      .siblings('.drop-down')
+      .find('a[href$="' + currPath + '"]')
+      .addClass('active');
+  }
+};
+
+})(jQuery);

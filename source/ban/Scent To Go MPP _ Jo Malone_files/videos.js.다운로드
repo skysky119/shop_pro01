@@ -1,0 +1,291 @@
+(function($, site) {
+
+site.videos = {
+
+  open: function(opts) {
+    var provider = !_.isEmpty(opts.provider) ? opts.provider : '';
+
+    if (provider === 'zentrick') {
+      this.openZentrick(opts);
+    }
+    else if (provider === 'youtube') {
+      this.openYouTube(opts);
+    }
+    else if (provider === 'html5') {
+      this.openHTML5(opts);
+    }
+    else {
+      console.log('Video provider not yet supported.');
+    }
+  },
+
+  openZentrick: function(opts) {
+    var publicationId = opts.zentrickId;
+    var context = !_.isEmpty(opts.context) ? opts.context : document;
+
+    if (!!site.isZentrickPlayerAPIReady && !_.isEmpty(publicationId)) {
+
+      var content = '<div class="js-content-block-video-placeholder"></div>';
+      var options = {
+        content: content,
+        cssClass: 'colorbox-zentrick',
+        cssStyle: {
+          border: 'none',
+          backgroundColor: '#000',
+          height: '100%',
+          width: '100%',
+          padding: '0px'
+        },
+      };
+
+      // Remove existing videos
+      $('.zentrick-video').remove();
+
+      // Create a new video container element
+      var windowHeight = $(window).height();
+      var id = 'p' + +new Date();
+      var $videoContainer = $('<div></div>').attr({
+        'class': 'hidden zentrick-video',
+        'id':    id
+      });
+      $videoContainer
+        .append( $('<div />').attr('class', 'embed-container').css('height', windowHeight).append( $('<div />').attr('id', id + '-inner') ) )
+        .appendTo('body');
+
+      // Initialize the player
+      site.zentrickPlayer = new zentrick.Player(
+        id + '-inner',
+        publicationId,
+        { html5: 1 }
+      );
+
+      // Add our new video player to an overlay
+      options.content = '<div class="js-content-block-video-placeholder">' + $('#' + id).html() + '</div>';
+      options.fastIframe = false;
+
+      generic.overlay.launch(options);
+    }
+    else {
+      console.log('Zentrick not ready or missing publication id.');
+    }
+    $(window).on('resize', _.debounce(function() {
+      var height = window.innerHeight;
+      $('.embed-container').css("height", height);
+    }, 100));
+  },
+
+  openYouTube: function(opts) {
+    var ytId = opts.youTubeId;
+    var context = !_.isEmpty(opts.context) ? opts.context : document;
+
+    var content = '<div class="embed-container"><div id="overlay-video"></div></div>';
+    var windowHeight = $(window).height();
+    var options = {
+      content: content,
+      cssClass: 'colorbox--video',
+      center: false,
+      cssStyle: {
+        border: 'none',
+        backgroundColor: '#000',
+        height: '100%',
+        width: '100%',
+        padding: '0px',
+        top: -windowHeight + 'px',
+      },
+    };
+
+    $('body').addClass('video-playing');
+    generic.overlay.launch(options);
+
+    function resizeVideo() {
+      var overlayWidth = $(window).width();
+      var overlayHeight = $(window).height();
+      var height = overlayWidth / 1.7;
+      var width = '100%';
+
+      if (height > overlayHeight) {
+        width = height * 1.7;
+        height = "100%";
+      }
+      $('#overlay-video').height(height);
+      $('#overlay-video').width(width);
+      console.log(height);
+      console.log(width);
+    }
+
+    function addVideo(ytId) {
+
+      var overlayWidth = $(window).width();
+      var overlayHeight = $(window).height();
+      var height = overlayWidth / 1.7;
+      var width = '100%';
+
+      if (height > overlayHeight) {
+        width = height * 1.7;
+        height = "100%";
+      }
+
+      // https://developers.google.com/youtube/player_parameters#Parameters
+      new YT.Player('overlay-video', {
+        height: height,
+        width: width,
+        videoId: ytId,
+        playerVars: {
+          modestbranding: 1,
+          controls: 1,
+          showinfo: 0,
+          rel: 0,
+          autoplay: 1,
+          fs: 0,
+        },
+        events: {
+          'onReady': function() {
+            // when the video player is ready
+          },
+          'onStateChange': function(event) {
+            // ended
+            if(event['data'] == 0) {
+              generic.overlay.hide();
+              $('body').removeClass('video-playing');
+            }
+          }
+        }
+      });
+    }
+
+    $(document).on('leaveFullScreen', function() {
+      window.setTimeout(function() {
+        resizeVideo();
+      }, 200);
+    });
+
+    $(window).on('resize', _.debounce(function() {
+        resizeVideo();
+    }, 200));
+
+    $('#foreground-node.colorbox--video').click( function() {
+      generic.overlay.hide();
+      $('body').removeClass('video-playing');
+    });
+
+    $('#foreground-node.colorbox--video .close-link').click( function() {
+      generic.overlay.hide();
+      $('body').removeClass('video-playing');
+    });
+
+    // draw down
+    $('#foreground-node.colorbox--video').animate({
+      top: '0px',
+    }, 2000, function() {
+      addVideo(ytId);
+    });
+  },
+
+  openHTML5: function(opts) {
+    var content = '<div class="embed-container">' + opts.content + '</div>';
+    var context = !_.isEmpty(opts.context) ? opts.context : document;
+
+    generic.overlay.launch({
+      content: content,
+      className: 'colorbox--video',
+      height: 'auto',
+      width: '100%',
+      maxWidth: 1024,
+      maxHeight: 768,
+      onComplete: function() {
+        var _this = this;
+        _this.$cbox = $('#colorbox.colorbox--video', context);
+        $('video', _this.$cbox).get(0).play();
+      }
+    });
+  }
+};
+
+  var videoBlock = {
+    setup: function($elements, context) {
+      var $modules = $elements;
+
+      $modules.each(function() {
+        var $module = $(this);
+        var $play = $('.js-play', $module);
+        var provider = $module.data('video-provider');
+        var isYoutube = (provider === 'youtube');
+        var isZentrick = (provider === 'zentrick');
+        var isHTML5 = (provider === 'html5');
+
+        $play.once().click(function(event) {
+          event.preventDefault();
+
+          var opts = {
+            context: context,
+            provider: provider
+          };
+
+          if (!!isYoutube) {
+            opts.youTubeId = $module.data('youtube-id');
+          }
+          else if (!!isZentrick) {
+            opts.zentrickId = $module.data('zentrick-id');
+          }
+          else if (!!isHTML5) {
+            opts.content = $module.find('video').wrap('<div />').parent().html();
+          }
+
+          site.videos.open(opts);
+          return false;
+        });
+      });
+    }
+  };
+
+  /**
+   * We initialize each type of video separately because we don't know if/when their respective libraries are loaded
+   */
+
+  $(document).on('youtubeIframeAPI.loaded', function() {
+    var $elements = $('.js-video').filter("[data-video-provider='youtube']");
+    if ($elements.length) {
+      videoBlock.setup( $elements, document );
+    }
+  });
+
+  $(document).on('zentrick:loaded', function() {
+    var $elements = $('.js-video').filter("[data-video-provider='zentrick']");
+    if ($elements.length) {
+      videoBlock.setup( $elements, document );
+    }
+
+    var provider = $('#zentrick-inner-video').data('video-provider');
+    var zentrickId = $('#zentrick-inner-video').data('zentrick-id');
+    if (provider === 'zentrick') {
+      site.zentrickPlayer = new zentrick.Player('zentrick-inner-video', zentrickId);
+    }
+  });
+
+  var $elements = $('.js-video').filter("[data-video-provider='html5']");
+  if ($elements.length) {
+    videoBlock.setup( $elements, context );
+  }
+
+// for now this only applies to webkit
+// detect when iframe goes fullscreen
+  $(document).on('fullscreenchange mozfullscreenchange webkitfullscreenchange msfullscreenchange',
+    function(e) {
+    if (document.webkitFullscreenElement || document.fullScreen || document.mozFullScreen || document.webkitIsFullScreen || document.msFullscreenElement)
+    {
+      $(document).trigger('enterFullScreen');
+    }
+    else
+    {
+      $(document).trigger('leaveFullScreen');
+    }
+  });
+
+  $(document).on('enterFullScreen', function() {
+    $('body').addClass('iframeFullScreen');
+  });
+  $(document).on('leaveFullScreen', function() {
+    $('body').removeClass('iframeFullScreen');
+  });
+
+})(jQuery, site);

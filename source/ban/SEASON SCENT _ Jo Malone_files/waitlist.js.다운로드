@@ -1,0 +1,36 @@
+var site = site || {};
+
+/* OOS/BIS -  */
+site.backInStock = {
+  init: function($addLink, skuData) {
+    site.backInStock.select(skuData);
+    site.backInStock.launchLink = $addLink;
+    site.backInStock.launchLink.bind("click", function(e) {
+      e.preventDefault();
+      site.backInStock.launch();
+    });
+  },
+  show: function() {
+    site.backInStock.launchLink.show();
+  },
+  hide: function() {
+    site.backInStock.launchLink.hide();
+  },
+  launch: function(skuData) {
+    var skuBaseId = site.backInStock.skuData.SKU_BASE_ID;
+    var file = '/waitlist/signup.tmpl?SKU_BASE_ID='+skuBaseId+'&REQUEST_TYPE=BIS';
+    var options = {
+      includeBackground: true,
+      includeCloseLink: true,
+      hideOnClickOutside: true,
+      width: '500px',
+      height: '350px',
+      cssClass: 'waitlist_overlay'
+    };
+    options.content = '<iframe class="waitlist-iframe-wrapper" scrolling="no" frameborder="0" src="'+file+'"></iframe>';
+    generic.overlay.launch(options);
+  },
+  select: function(skuData) {
+    site.backInStock.skuData = skuData;
+  }
+};

@@ -1,0 +1,6 @@
+var site = site || {};
+site.isZentrickPlayerAPIReady = false;
+var onZentrickPlayerAPIReady = function() {
+  site.isZentrickPlayerAPIReady = true;
+  jQuery(document).trigger('zentrick:loaded');
+}

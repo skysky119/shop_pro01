@@ -1,0 +1,360 @@
+var site = site || {};
+site.onLoadRpc = site.onLoadRpc || {}
+site.onLoadRpc.requests = site.onLoadRpc.requests || [];
+
+site.onLoadRpc.init = function() {
+
+     /*site.onLoadRpc.requests.push({
+         "method": "trans.get",
+         "params": [{
+             "trans_fields" : ["TRANS_ID", "payments"],
+             "payment_fields" : ["address", "PAYMENT_TYPE", "PAYMENT_AMOUNT", "TRANS_PAYMENT_ID"],
+             "order_fields" : ["items", "samples", "address", "TRANS_ORDER_ID"],
+         }],
+         "onSuccess" : function (d) {
+             if ((d.result === undefined) || (d.result.value == null)) return;
+             var cartResponse = d.result.value;
+
+             $(document).trigger('cart.loaded', cartResponse);
+
+             // populate anything looking for basic cart data
+             $('[data-pg-object="cart"] > [data-pg-prop], [data-pg-object="cart"][data-pg-prop]').each( function() {
+                 var $node = $(this);
+                 $node.html(cartResponse[$node.attr('data-pg-prop')]);
+
+                 // bind anything looking for the cart count
+                 if ($node.attr('data-pg-prop') === 'items_count') {
+                     $(document).bind("cart.updated", function(event, cartResult) {
+                         if (typeof cartResult.getCount != "undefined") {
+                             $node.html(cartResult.getCount());
+                        }
+                     });
+                 }
+             });
+         },
+         "onFailure" : function (d) {}
+     });*/
+
+    /*site.onLoadRpc.requests.push({
+        "method":   "user.json",
+        "params":   [{}],
+        "onSuccess" : function(data) {
+            // This is for the Phone Order app to recognize values on Drupal pages
+            if ((data.result === undefined) || (data.result.value == null)) {
+                return null;
+            }
+            if ((data.result.value['csr_email'] !== undefined) && (data.result.value['csr_email'] !== null)){
+                $('#csr_header_holder').removeClass('hidden');
+            }
+            // set a body class attribute based on user logged in status
+            $('body').addClass( (data.result.value.signed_in === 1) ? 'elc-user-state-logged-in' : 'elc-user-state-anonymous' );
+
+            // populate user data
+            $('[data-pg-object="user"] > [data-pg-prop], [data-pg-object="user"][data-pg-prop]').each( function() {
+                $(this).html(data.result.value[$(this).attr('data-pg-prop').toLowerCase()]);
+            });
+
+            generic.user.setUser(data.result.value);
+        },
+        "onFailure" : function() {}
+    });*/
+
+    //collect product ID's from DOM
+    var prodIds = [];
+    $('[data-productid]').each( function() {
+        $this = $(this);
+        var prodId = $this.attr('data-productid');
+        var insert = true;
+        for (var i=prodIds.length-1; i>-1; i--) {
+            if (prodIds[i] == prodId) {
+                insert = false;
+                break;
+            }
+        }
+        if (insert) {
+            prodIds.push(prodId);
+        }
+        insert = true;
+    });
+
+    site.onLoadRpc.requests.push({
+        "method":   "prodcat",
+        "params":   [{
+            products: prodIds,
+            category_fields: ['products'],
+            product_fields: ['PRODUCT_ID', 'skus'],
+            sku_fields: ['SKU_ID', 'INVENTORY_STATUS','DISPLAY_STATUS','SKU_BASE_ID','isOrderable','isShoppable']
+        }],
+        "onSuccess" : function (data) {
+            // handle successful prodcat call
+            //console.dir("site.onLoadRpc onSuccess");
+            //console.dir(data);
+            $(document).trigger('prodcat.status', data);
+        }
+    });
+
+};
+
+
+
+
+/*
+ * site.onLoadRpc.requests - a global array of RPC request objects
+ * must be initialized pre-DOM-load and formatted like this:
+ * [
+ *     {
+ *         "method":   "user.json",
+ *         "params":   [{}],
+ *         "onSuccess" : function () { },
+ *         "onFailure" : function () { }
+ *     }
+ * ]
+ */
+site.onLoadRpc.fetch = function() {
+    var requests = site.onLoadRpc.requests || [];
+    var queryVals = [];
+
+    for (var i=0, len=requests.length; i<len; i++) {
+        var postMethod = requests[i]["method"] || "rpc.form";
+        queryVals[i] = {
+            "method": postMethod,
+            "params": requests[i].params,
+            "id": i + 1
+        };
+    }
+
+    if (queryVals.length < 0) {
+        return null;
+    }
+
+    var successHandler = function(data, textStatus, response) {
+        for (var i=0, len=requests.length; i<len; i++) {
+            var fn = requests[i].onSuccess;
+            if (typeof fn !== 'function') {
+                continue;
+            }
+            fn( data[i] );
+        }
+    };
+
+    var url = "/rpc/jsonrpc.tmpl";
+    var options = {};
+
+    // ELCTWO-571 requires that we pass brand, region, and locale ids to ensure proper responses
+    // on the pg side for drupal sites.  To accomplish this we pass 'addl_url_params' within the arguments.
+    // This snippets searches for such entries and adds 'em to the request url.
+    var url_params = "";
+    $(queryVals).each( function () {
+        if (this.params[0].url_params) {
+            if (this.params[0].url_params.charAt(0) === '&') {
+                url_params += this.params[0].url_params;
+            } else {
+                url_params += '&' + this.params[0].url_params;
+            }
+        }
+    });
+    if (url_params !== "") {
+        url += '?' + url_params.substring(1);
+    }
+
+    options.data = $.param({JSONRPC: JSON.stringify(queryVals)});
+
+    options.type = "POST";
+    options.success = function(data, textStatus, response) {
+        // console.log("Ajax success :::::::::::::::::::::");
+        // console.log(arguments);
+        successHandler(data, textStatus, response);
+    };
+    options.error = function(jqXHR, textStatus, errorThrown) {
+        // console.log("Ajax error :::::::::::::::::::::");
+        // console.log(arguments);
+    };
+    $.ajax(url,options);
+
+};
+
+/**
+    * Method to grab a cookie and use that to control DOM elements as needed.
+    * Handles the setting and getting of the user cookie defined in cookie.name and set in backend.
+    * To find where the cookie is set on backend, look to Request::TransactionLocaleHandler.
+    * Example cookie structure not signed in:
+    *   FE_USER_CART=item_count:1&first_name:&signed_in:0&region_id:0
+    * Example cookie structure signed in:
+    *   FE_USER_CART=item_count:3&first_name:John&signed_in:1&region_id:0
+    * You can set specific functions on page load using events.load or hook into javascript events
+    *    by defining them in the events class and adding the event to events.init.
+    * The cookie class is used to handle all the cookie functionality such as the setting and getting.
+    * This method is meant to be stand alone so should be able to add to a brand without many tweaks.
+    * Uses straight javascript so not dependent on a javascript framework except for DOM load.
+    * Preferably added to the where ever the globalnav javascript is added within a brand.
+    * @memberOf site
+*/
+site.userInfoCookie = function() {
+    // Set global vars here.
+    var nodes = {};
+
+    // Private internal cookie class.
+    // Leverages generic.cookie to get and set the cookie values.
+    var cookie = {
+        'name'  : 'FE_USER_CART',
+        'value' : '',
+        'regEx' : function(key) {
+            if (!key) {
+                return null;
+            };
+            return new RegExp(key + '\:([^;&,}]*)');
+        },
+        'set'   : function() {
+            if (!this.name) {
+                return null;
+            };
+            var userCookie = generic.cookie(this.name);
+            this.value = userCookie ? userCookie : '';
+        },
+        'getValue' : function(key) {
+            var keyVal = this.value.match(this.regEx(key));
+            return keyVal[1] ? keyVal[1] : null;
+        },
+        'setValue' : function(key, val) {
+            var match  = this.value.match(this.regEx(key));
+            var oldValue = match[0];
+            var newValue = this.value.replace(match[1], val);
+            generic.cookie(this.name, newValue, { path:"/" });
+            this.value   = newValue;
+        }
+    };
+
+    // Private events class that handles all individual events.
+    // Add all events in 'init' method so they will get fired on page load.
+    // The cart event is commented out but there as an example.
+    var events = {
+        'init'   : function() {
+            this.load();
+            //this.cart();
+        },
+        'load'  : function() {
+            _setCartItemsTotal();
+        },
+        'cart'  : function() {
+            /*
+            document.observe("cart:countsUpdated", function() {
+                var cartCount = generic.checkout.cart.getTotalItems();
+                cookie.setValue('item_count', cartCount);
+            });
+            */
+        }
+    };
+    /* Additional helper functions below here. */
+
+    var _getCartValue = function() {
+        var valueKey = 'item_count';
+        var itemsTotal = cookie.getValue(valueKey) || 0;
+        return itemsTotal;
+    };
+
+    // Pulls in the cookie info and updates the DOM;
+    var _setCartItemsTotal = function(itemsTotal) {
+        if (!nodes.cartTotalContainer) {
+            return null;
+        }
+        itemsTotal = itemsTotal ? parseInt(itemsTotal) : _getCartValue();
+        if(nodes.cartTotalContainer.length == undefined) {
+            nodes.cartTotalContainer.innerHTML = itemsTotal;
+        } else {
+            for (i=0; i < nodes.cartTotalContainer.length; i++) {i
+                nodes.cartTotalContainer[i].innerHTML = itemsTotal;
+            }
+        }
+        return itemsTotal;
+    };
+    var _isSignedIn = function() {
+      return !!(cookie.getValue('signed_in') == 1); 
+    };  
+    var _getFirstName = function() {
+      return cookie.getValue('first_name');
+    }; 
+
+    // BRAND SPECIFIC: Get any DOM nodes and assign them to the global class var nodes. Varies between brands.
+    // Helps keep all the brand specific DOM definitions in one spot.
+    var _getDomNodes = function() {
+        nodes.cartTotalContainer = $('.chat-cart-item-count');
+    };
+
+    return {
+        init : function() {
+            _getDomNodes();
+            cookie.set();
+            events.init();
+        },
+        getCartValue : _getCartValue,
+        setCartValue : _setCartItemsTotal,
+        getFirstName : _getFirstName,
+        isSignedIn   : _isSignedIn
+    }
+}();
+
+$( function() {
+    var $cartOverlay = $('.block-template-chat-cart-v1 .gnav-item-content');
+    site.onLoadRpc.init();
+    site.onLoadRpc.fetch();
+
+    // Trans-deferral code.
+    site.userInfoCookie.init();
+    $(document).bind("cart.updated", function(event, cartResult) {
+        var count = site.userInfoCookie.setCartValue(cartResult.getCount());
+        if(count > 0) {
+            $cartOverlay.css({ display: '', visibility: '' });
+        }
+        $(document).trigger('cart_quantity.updated', count);
+    });
+
+    // set a body class attribute based on user logged in status
+    $('body').addClass( (site.userInfoCookie.isSignedIn()) ? 'elc-user-state-logged-in' : 'elc-user-state-anonymous' );
+
+    // Only include this functionality if the cart contains items.
+    // Engages the cart overlay when user hovers over bag.
+    if(site.userInfoCookie.getCartValue() > 0) {
+      $('.chat-cart-items').one('mouseover', function(event) {
+        var $bag = $(this);
+        var method = 'trans.get';
+        var transParams =[{
+          "trans_fields" : ["TRANS_ID", "payments"],
+          "payment_fields" : ["address", "PAYMENT_TYPE", "PAYMENT_AMOUNT", "TRANS_PAYMENT_ID"],
+          "order_fields" : ["items", "samples", "address", "TRANS_ORDER_ID"]
+        }];
+
+        var urlParams = '';
+        //if(Drupal.settings.perlgem.pg_reqs) {
+        //  site.inlineData.transParams[0].url_params = Drupal.settings.perlgem.pg_reqs;
+        //}
+
+        //urlParams = $.trim(site.inlineData.transParams[0].url_params);
+        //if(urlParams !== "") {
+        //  method += '&'+urlParams;
+        //}
+
+        generic.jsonrpc.fetch({
+          method: method,
+          params: transParams,
+          onSuccess: function(res) {
+            $(document).one('cartoverlay.loaded', function(event, options) {
+              $cartOverlay.css({ display: '', visibility: '' });
+
+              // Only display the popover if the user is still hovering the bag link.
+              if($bag.data('entered') == 1) {
+                $(options.trigger).mouseenter();
+              }
+            });
+            // Fire the cart loaded event to render the cart popover.
+            $(document).trigger('cart.loaded', res.getValue());
+          }
+        });
+      }).hover(function(event) {
+        $(this).data('entered', 1);
+      }, function(event) {
+        $(this).removeData('entered');
+      });
+    } else {
+      $cartOverlay.css({ display: 'none', visibility: 'hidden' });
+    }
+});

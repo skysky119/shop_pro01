@@ -1,0 +1,323 @@
+(function ($, Drupal, window, document, undefined) {
+'use strict';
+
+Drupal.JM = Drupal.JM || {};
+Drupal.JM.mainNavigation = {};
+
+/**
+ * Make any necessary adjustments to account for a fixed-position #top and #footer elements
+ */
+Drupal.behaviors.fixedHeaderFooterAdjustments = {
+  attach: function(context, settings) {
+    var properties = {};
+
+    if ($('#top').css('position') == 'fixed') {
+      properties['padding-top'] = Drupal.jm.getHeaderHeight() + 'px';
+    }
+
+    // if ($('#footer').css('position') == 'fixed') {
+    //   properties['padding-bottom'] = Drupal.jm.getFooterHeight() + 'px';
+    // }
+
+    var length = 0;
+    for (var prop in properties) {
+      if (properties.hasOwnProperty(prop)) {
+        length++;
+      }
+    }
+    if (length > 0) {
+      $('#main').css( properties );
+    }
+
+    // give our top-fixed elements a chance to get around admin bar
+    // anything with this class will be positioned from top appropriately
+    if ($('#toolbar')){
+      $('<style type="text/css">.top-fixed{top:' + $('#toolbar').height() +'px;}</style>').appendTo('head');
+    }
+
+    // This doesn't work in IE < 9, which is why the code above exists
+    /*
+    if (Object.keys(properties).length > 0) {
+      $('#main').css( properties );
+    }
+    */
+  }
+};
+
+/**
+ * Live Chat Overlay
+ */
+Drupal.behaviors.liveChat = {
+  attach: function(context, settings) {
+    var $foreground = $('.live-chat-container');
+    var $background = $('.live-chat-background');
+    var $close = $('.live-chat-close-link');
+    var $liveChatLink = $('.wrapper','.btn_live_chat');
+
+    var liveChatIsMobile = function(){
+      var ua = navigator.userAgent.toLowerCase();
+      return (
+        //Detect iPhone
+        (navigator.platform.indexOf("iPhone") != -1) ||
+        //Detect iPod
+        (navigator.platform.indexOf("iPod") != -1) ||
+        //Detect iPad
+        (navigator.platform.indexOf("iPad") != -1) ||
+        //dectect android
+        (ua.indexOf("android") > -1)
+      );
+    };
+
+    var scrollHandler = function() {
+      // foreground
+      centerElement($foreground);
+
+      // background
+      scaleElementToPage($background);
+    };
+
+    var centerElement = function(ele) {
+      var windowScrollOffsets = {
+        top : $(window).scrollTop(),
+        left : $(window).scrollLeft()
+      };
+      var windowDimensions = {
+        height: $(window).height(),
+        width: $(window).width()
+      };
+      var contentDimensions = {
+        width: $(ele).width(),
+        height: $(ele).height()
+      };
+      var xPosition, yPosition, generic, ixPosition;
+
+      if(windowDimensions.height < contentDimensions.height) {
+        yPosition = 0;
+      } else {
+        yPosition = (windowDimensions.height/2) - (contentDimensions.height/2) + (windowScrollOffsets.top);
+      }
+      xPosition = (windowDimensions.width/2) - (contentDimensions.width/2) + (windowScrollOffsets.left);
+
+      if(liveChatIsMobile()){
+        ixPosition =  (windowDimensions.width/2) - (contentDimensions.width/2);
+        $(ele).css("left",(ixPosition+'px'));
+      }else{
+        $(ele).css("top",(yPosition+'px'));
+        $(ele).css("left",(xPosition+'px'));
+      }
+    };
+
+    var scaleElementToPage = function(ele) {
+      ele.css({
+        height: $(document).height()+'px',
+        width: $(window).width()+'px'
+      });
+    };
+
+    //var $liveChatLinks = $('.btn_live_chat').parent();
+    //$liveChatLinks.click( function(e) {
+    $('.wrapper').delegate( '.btn_live_chat', "click", function(e) {
+      e.preventDefault();
+      $background.removeClass('hidden');
+      $foreground.removeClass('hidden');
+      scrollHandler();
+      $(window).resize(scrollHandler);
+      $(window).scroll(scrollHandler);
+      var $btnLiveChat = $(this);
+      $btnLiveChat.addClass('js-focus-return');
+      site.restrict_navigation($foreground);
+      $foreground.focus();
+    });
+
+    $close.click( function(e) {
+      e.preventDefault();
+      var $currLiveChatBtn = $('.js-focus-return');
+      $currLiveChatBtn.removeClass('js-focus-return').focus();
+      $foreground.addClass('hidden');
+      $background.addClass('hidden');
+      $(window).unbind('resize',scrollHandler);
+      $(window).unbind('scroll',scrollHandler);
+    });
+
+  }
+};
+
+/**
+ * Initialize the superfished main navigation
+ */
+Drupal.behaviors.initMainNavigation = {
+  attach: function(context, settings) {
+    if ($.isFunction($.fn.urlActiveTrail)) {
+      $('body.coresite #navigation').urlActiveTrail({activeClass: 'active-trail'});
+    }
+
+    // Instantiate superfish menus for the main navigation
+    if ($.isFunction($.fn.superfish)) {
+      $('.field-menu', 'body.coresite .main-menu').children('.menu').superfish({
+        animation: false,
+        autoArrows: false,
+        delay: 1000,
+        dropShadows: false,
+        speed: 'slow'
+      });
+      $('body.coresite .main-menu a').wrapInner('<span></span>');
+      $('body.coresite .main-menu li').each(function() {
+        if (!$(this).children().first().is('a')) {
+          $(this).wrapInner('<a href="javascript:void"><span></span></a>');
+          $('.menu-container', this).prependTo($(this));
+        }
+      });
+    }
+    var temp;
+    Drupal.JM.mainNavigation.active = $('#navigation .field-menu > .menu .active-trail .menu');
+    var timer;
+    $('body.coresite #navigation .field-menu > .menu > li').mouseenter(function() {
+      clearTimeout(timer);
+      if (temp) {
+        temp.find('.menu').css('visibility', 'hidden');
+        temp = '';
+      }
+      temp = $(this);
+      temp.find('.menu').css('visibility', 'visible');
+      Drupal.JM.mainNavigation.active.css('visibility', 'hidden');
+    });
+    $('body.coresite #navigation .field-menu > .menu > li').mouseleave(function() {
+        if (temp) {
+          temp.find('.menu').css('visibility', 'visible');
+        }
+        if (timer) {
+          clearTimeout(timer);
+        }
+        timer = setTimeout(function() {
+          temp.find('.menu').css('visibility', 'hidden');
+          Drupal.JM.mainNavigation.active.css('visibility', 'visible');
+          temp = '';
+          clearTimeout(timer);
+        }, 200);
+    });
+  }
+};
+
+/**
+ * Deep linking object
+ */
+var MT = {
+  base_hash: "#/products",
+  path: {},
+  pageLoad: true,
+  openCat: function(params) {
+    ///
+     // If it's an open category, just scroll
+     // site.mpp is defined globally in jomalone_cateogry/libraries/mpp/mpp.js
+     ///
+    if($('.category-CAT' + params.cat).hasClass('open')){
+      $.scrollTo($('.category-CAT' + params.cat), site.mpp.ux.speed_down, {
+        offset: site.mpp.ux.top_offset
+      });
+    }
+
+    ///
+     // If it's *NOT* an open category, click the Explore button
+     // site.mpp is defined globally in jomalone_cateogry/libraries/mpp/mpp.js
+     ///
+    if(!$('.category-CAT' + params.cat).hasClass('open')){
+      $('.category-CAT' + params.cat + ' .btn-explore').trigger('click');
+    }
+
+    if(params.prod !== undefined){
+      this.openProd(params);
+    }
+  },
+  openProd: function(params) {
+    $(document).bind('MPP:productsVisible', function(){
+      $('.mpp_product_tile [data-productid="' + params.prod + '"]').trigger('click');
+    });
+    if (MT.path.cat === undefined || MT.path.cat === 'undefined' && MT.path.prod !== 'undefined' || MT.pathprod !== undefined){
+      $('.mpp_product_tile [data-productid="' + params.prod + '"]').trigger('click');
+    }
+  },
+  openSingleMPP: function(params) {
+    $('.category-CAT' + params.cat + '[data-pg-prod-id="' + params.prod + '"] .btn-explore').trigger('click');
+  },
+  // there has GOT to be a better way than this
+  goToURL: function(prevProd) {
+    var url = '/products/';
+    if(MT.path.cat !== '' && MT.path.cat !== undefined && MT.path.cat !== 'undefined' && MT.path.prod !== '' && MT.path.prod !== undefined && MT.path.prod !== null && prevProd !== undefined){
+      url += MT.path.cat + '/' + MT.path.prod;
+      window.location.hash = url;
+    }
+    else if(MT.path.cat !== '' && MT.path.cat !== undefined && MT.path.cat !== 'undefined' && MT.path.prod !== '' && MT.path.prod !== undefined && MT.path.prod !== null && prevProd !== MT.path.prod){
+      url += MT.path.cat + '/' + MT.path.prod;
+      window.location.hash = url;
+    }
+    else if ( MT.path.cat !== undefined && MT.path.cat !== null){
+      url += MT.path.cat;
+      window.location.hash = url;
+    }
+  }
+};
+
+/**
+ * path.js implementation for deep linking
+ */
+Path.map(MT.base_hash + "(/:cat)(/:prod)").enter([
+  function() {
+    MT.path = this.params;
+  },
+]).to(function(){
+  if(this.params['cat'] !== undefined){
+    if($('.category-CAT' + this.params['cat']).data('pg-prod-id')){
+      var timer,
+        singleSelf = this;
+      //This timer needs to be factored out. The reason for it being there is this is firing before the Single MPP products
+      //Are loaded so we have to hold off on opening everything
+      timer = window.setTimeout(function(){
+        if(MT.pageLoad === true){
+          MT.openSingleMPP(singleSelf.params);
+          MT.pageLoad = false;
+        }
+      }, 1500);
+    }
+    else if(this.params['cat'] !== undefined && this.params['cat'] !== null && this.params['cat'] !== 'undefined'){
+      MT.openCat(this.params);
+    }
+    else if (this.params['cat'] === undefined || this.params['cat'] === 'undefined' && this.params['prod'] !== undefined && this.params['prod'] !== 'undefined'){
+      MT.openProd(this.params);
+    }
+  }
+});// Path.map()
+
+/**
+ * Deep linking attach
+ */
+Drupal.behaviors.mppTrail = {
+  attach: function (context, settings) {
+    Path.root("");
+    Path.listen();
+    var self = this;
+    var catProd = {cat: '', prod: ''};
+    var prevProd;
+
+    $(document).bind('MPP:productsVisible', function(e, catObj){
+      if(catObj){
+        catProd.cat = catObj[0];
+      }
+      var temp = $(catProd.cat).attr('class').replace(/\D/g,'');
+      if(temp !== MT.path.cat && MT.path.cat !== undefined && MT.path.cat !== 'undefined'){
+        MT.path.prod = null;
+      }
+      MT.path.cat = temp;
+      MT.goToURL(prevProd);
+    });
+
+    $(document).bind('MPP:quickshopsCreated', function(e, pane){
+      prevProd = MT.path.prod;
+      MT.path.prod = $('.quickshop-container .selectbox', pane).data('productid');
+      MT.goToURL(prevProd);
+      MT.pageLoad = false;
+    });
+
+  }, // .attach
+}; // Drupal.behaviors
+
+})(jQuery, Drupal, this, this.document);

@@ -1,0 +1,39 @@
+/**
+ * helper to send ajax request to pg
+ * Used for contact form, emails signup, etc
+ */
+
+function perlgem_form_request(method, params) {
+  var response = 0;
+  var pg_reqs = Drupal.settings.perlgem.pg_reqs;
+  var pg_url = '/rpc/jsonrpc.tmpl?' + ((pg_reqs) ? pg_reqs : "") + 'dbgmethod=' + method ;
+  var host = Drupal.settings.perlgem.pg_headers.Host;
+  console.log(host);
+  var user_agent = Drupal.settings.perlgem.pg_headers.user_agent;
+   //check for pg_reqs, if we have them we are on a coresite and need to change the url
+   console.log(pg_reqs);
+   console.log(method);
+   if (pg_reqs && method == 'rpc.form') {
+     pg_url = '/mini_site_form.logic?' + pg_reqs;
+   }
+   jQuery.ajax({
+      url: pg_url,
+      type: "POST",
+      async: false,
+      headers: {
+        'Host' : '' + host,
+        'User-Agent' : '' + user_agent
+      },
+      data: 'JSONRPC=[' + JSON.stringify(params) + ']',
+      dataType: "json",
+      success: function(result) {
+        if(params.onSuccess !== undefined) { params.onSuccess(result[0].result); }
+        response = result;
+      },
+      error: function(result) {
+        if(params.onFailure !== undefined) { params.onFailure(result[0].result); }
+      }
+    });
+   //return the response for additional handling
+   return response;
+}

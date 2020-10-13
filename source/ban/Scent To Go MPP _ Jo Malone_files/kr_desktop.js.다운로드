@@ -1,0 +1,191 @@
+/* KR - DESKTOP */
+
+var site = site || {};
+$tempOutOfStockMsg = $(".temp_out_of_stock_msg");
+$comingSoonStockMsg = $(".coming_soon_stock_msg");
+
+/* BACK IN STOCK */
+site.backInStock = {
+  init: function($addLink, skuData) {
+    site.backInStock.select(skuData);
+    site.backInStock.launchLink = $addLink;
+    site.backInStock.launchLink.bind("click", function(e) {
+      e.preventDefault();
+      site.backInStock.launch();
+    });
+  },
+  show: function() {
+    $tempOutOfStockMsg.removeClass('hidden');
+  },
+  hide: function() {
+    site.backInStock.launchLink.hide();
+  },
+  launch: function(skuData) {
+    var skuBaseId = site.backInStock.skuData.SKU_BASE_ID
+    generic.template.get({
+      path: '/templates/products/bis_notification.tmpl',
+      forceReload: true,
+      urlparams: {
+        SKU_BASE_ID: skuBaseId
+      },
+      callback: function(html) {
+        site.modal.createForm('bis_modal', html);
+      }
+    });
+  },
+  select: function(skuData) {
+    site.backInStock.skuData = skuData;
+  }
+};
+
+/* SOLD OUT */
+site.soldOut = {
+  init: function($addLink, skuData) {
+    site.soldOut.select(skuData);
+    site.soldOut.launchLink = $addLink;
+    site.soldOut.launchLink.bind("click", function(e) {
+      e.preventDefault();
+      site.soldOut.launch();
+    });
+  },
+  show: function() {
+    site.soldOut.launchLink.show();
+  },
+  hide: function() {
+    site.soldOut.launchLink.hide();
+  },
+  launch: function(skuData) {
+    var skuBaseId = site.soldOut.skuData.SKU_BASE_ID
+    generic.template.get({
+      path: '/templates/products/bis_notification.tmpl',
+      forceReload: true,
+      urlparams: {
+        SKU_BASE_ID: skuBaseId
+      },
+      callback: function(html) {
+        site.modal.createForm('bis_modal', html);
+      }
+    });
+  },
+  select: function(skuData) {
+    site.soldOut.skuData = skuData;
+  }
+};
+
+/* COMING SOON */
+site.comingSoon = {
+  init: function($addLink, skuData) {
+    site.comingSoon.select(skuData);
+    site.comingSoon.launchLink = $addLink;
+    site.comingSoon.launchLink.bind("click", function(e) {
+      e.preventDefault();
+      site.comingSoon.launch();
+    });
+  },
+  show: function() {
+    $comingSoonStockMsg.removeClass('hidden');
+  },
+  hide: function() {
+    site.comingSoon.launchLink.hide();
+  },
+  launch: function(skuData) {
+    var skuBaseId = site.comingSoon.skuData.SKU_BASE_ID
+    generic.template.get({
+      path: '/templates/products/cs_notification.tmpl',
+      forceReload: true,
+      urlparams: {
+        SKU_BASE_ID: skuBaseId
+      },
+      callback: function(html) {
+        site.modal.createForm('cs_modal', html);
+      }
+    });
+  },
+  select: function(skuData) {
+    site.comingSoon.skuData = skuData;
+  }
+};
+
+/* JQUERY COMPONENTS */
+
+(function($, Modernizr) {
+
+/* MODALFORM */
+$.fn.extend({
+  modalform: function(options) {
+    var defaults = {
+      'completed_template_params': {}
+    };
+    var options =  $.extend(defaults, options);
+    return this.each(function() {
+      var o = options;
+      $(this).bind('submit', function(evt) {
+        evt.preventDefault();
+        var form = $(this);
+        var params = {};
+        var params_array = $(this).serializeArray();
+        var error_node = $('#' + form.attr('name') + '_error');
+        for(var i=0; i < params_array.length; i++) {
+          key = params_array[i].name;
+          val = params_array[i].value;
+          params[key] = val;
+          if(o.completed_template_params[key] != undefined) {
+            o.completed_template_params[key] = val;
+          }
+        }
+        generic.jsonrpc.fetch({
+          method: 'form.get',
+          params: [params],
+          onSuccess: function(t) {
+            generic.template.get({
+              path: form.attr('action'),
+              urlparams: o.completed_template_params,
+              forceReload: true,
+              callback: function(html) {
+                o.container.html(html);
+              }
+            });
+            if(typeof options.rpcSuccess === 'function') {
+              options.rpcSuccess.call();
+            }
+          },
+          onFailure: function(jsonRpcResponse) {
+            var messages = [];
+            $.each(jsonRpcResponse.getMessages(), function(index, value) {
+              messages.push({
+                'text': value.text,
+                'key': value.key
+              });
+            });
+            generic.showErrors(messages, error_node, form);
+            if(typeof options.rpcFailure === 'function') {
+              options.rpcFailure.call();
+            }
+          },
+          onError: function(t) {
+            generic.showErrors({
+              'text': 'Sorry an unexpected error occurred, please try again',
+              'key': 'unexpected'
+            }, error_node, form);
+          }
+        });
+      });
+    });
+  }
+});
+
+/* DOCUMENT READY */
+$(function() {
+  if ($.browser.msie) {
+    $('html').addClass('ie').addClass('ie' + parseInt($.browser.version, 10));
+  }
+});
+
+})(jQuery, Modernizr);
+
+if (navigator.userAgent.match(/iPad/i)) {
+    var viewportmeta = document.querySelector('meta[name="viewport"]');
+    if (viewportmeta) {
+        viewportmeta.content = 'width=device-width, minimum-scale=1.0, maximum-scale=1.0';
+    }
+}

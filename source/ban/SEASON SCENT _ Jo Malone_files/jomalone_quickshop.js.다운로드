@@ -1,0 +1,537 @@
+var site = site || {};
+var generic = generic || {};
+var Mustache = Mustache || {};
+site.quickshop = {};
+
+site.quickshop.initAddToBag = function($addLink, skuData) {
+  $addLink.attr('data-skubaseid', skuData.SKU_BASE_ID);
+  $addLink.bind('click', function(e) {
+    e.preventDefault();
+    var params = {
+      skuData: skuData,
+      skuBaseId: $(this).attr('data-skubaseid')
+    };
+    delete params[skuData.VIRTUAL_SKU_FLAG ? 'skuBaseId' : 'skuData'];
+    site.addToCart(params);
+  });
+};
+
+site.quickshop.engraveButtons = function(skuData, container) {
+  //Hide any engraving buttons and more information that may have been shown already
+  $('.js-btn-engrave,.btn-engrave', container).css('display', 'none').next('.engraving-more-information').hide();
+  var relval = skuData.SKU_BASE_ID;
+  //If we have a SKU BASE ID
+  if (!!relval) {
+    //If the SKU is Orderable (different between US and UK)
+    if (skuData.isOrderable && skuData.canEngrave) {
+      //Show this specific SKU's engraving buttons
+      $('.js-btn-engrave[data-skubaseid=' + skuData.SKU_BASE_ID + ']' + ',' + '.btn-engrave[data-skubaseid=' + skuData.SKU_BASE_ID + ']', container).css('display', 'block').next('.engraving-more-information').show();
+    }
+  }
+  //Bind the button and more information
+  $(container).find('.add_engraving_msg').unbind('click').bind('click', function(e) {
+    e.preventDefault();
+    var ele = $(this);
+    var dataSkubaseId = $(this).attr('data-skubaseid');
+    var query = '?SKU_BASE_ID=' + dataSkubaseId;
+    generic.template.get({
+      path: '/templates/engraving-qvform.tmpl' + query,
+      callback: function(html) {
+        //try block sync fix to callback facility
+        html += '<script>try{site.quickshop.engraving();}catch(e){};</script>';
+        //map type from button cta
+        generic.overlay.launch({
+          content: html,
+          cssClass: 'engraving-preview-popup',
+          cssStyle: {
+            top: generic.isMobile() ? parseInt(ele.offset().top) + 'px' : undefined
+          },
+          center: true,
+          lockPosition: false,
+          includeBackground: true,
+          backgroundNodeClickHide: true
+        });
+      },
+      object: []
+    });
+  });
+  $(container).find('.engraving-more-information').unbind('click').bind('click', function(e) {
+    e.preventDefault();
+    var ele = $(this);
+    generic.template.get({
+      path: '/engraving-content',
+      callback: function(html) {
+        var html2 = '<div class="modal-wrapper">' + $(html).find('#content').html() + '</div>';
+        generic.overlay.launch({
+          content: html2,
+          cssClass: 'modal engraving-more-information-popup',
+          cssStyle: {
+            top: generic.isMobile() ? parseInt(ele.offset().top) + 'px' : undefined
+          },
+          center: true,
+          lockPosition: false,
+          includeBackground: true,
+          backgroundNodeClickHide: true
+        });
+      }
+    });
+  });
+};
+
+site.quickshop.launch = function(args) {
+  // give our product data a function to return price (used in mustache)
+  var prod, gaDataLayer;
+  args.productData.getPrice = function() {
+    return function() {
+      return args.productData.skus[0].formattedPrice;
+    };
+  };
+
+  var template = $("script.inline-template[path='quickshop']").html(),
+      out = Mustache.render(template, args.productData), // the template used to render the qs
+      $qs_row = $('<div class="qs-row qs-row-clear"></div>').insertAfter(args.inject), // the placement of our qs dom object, used to be r
+      $qs_pane = $qs_row.closest('.product-pane'), // nearest overall parent pane of our row
+
+      $priceDisplay = $('.quickshop_wrapper .sku_price');
+
+  function selectSku(skuData) {
+    $addLink.attr('data-skubaseid', skuData.SKU_BASE_ID);
+    $addLink.attr('data-sku-id', skuData.SKU_BASE_ID);
+    $priceDisplay.html(skuData.formattedPrice);
+    site.backInStock.select(skuData);
+    site.comingSoon.select(skuData);
+  }
+
+  if (typeof args.$productThumb != 'undefined' && args.$productThumb.length) {
+    $('.product').removeClass('active-qs');
+    args.$productThumb.addClass('active-qs');
+  }
+
+  //notify analytics.js of QV and productID
+  $(document).trigger('MPP:productQV', [args.productData.PRODUCT_ID]);
+
+  // let's close and handle all our unloading stuff, but not for mpp-qs pages
+  if (typeof site.mpp == 'undefined' || (typeof site.mpp !== 'undefined' && !site.mpp.mppqs)) {
+    $('.qs-row').each(function() {
+      // selects have to be destroyed or otherwise error
+      $('.selectbox', $(this)).selectBox('destroy');
+      // let each close itself
+      $('.close_quickshop', $(this)).click();
+    });
+  }
+
+  // render it
+  $qs_row.html(out);
+  $(document).trigger('MPP:quickshopsCreated', [$qs_pane]);
+
+  var $addLink = $('.quickshop_wrapper a.add_to_cart');
+
+  // wire up select boxes
+  $qs_row.find('.selectbox').selectBox();
+
+  // open our quickshop
+  $qs_row.find('.qs-layer').slideDown(400, function() {
+    // set border bottom for variable height qs rows
+    $qs_row.find('.qs-layer').find('img').load(function() {
+      $('.qs-border-bottom').css('margin-top', $('.qs-layer-inner').height());
+    });
+
+    // This ONLY needs to be fired on non-mpp-quickshop (single item) pages
+    // slide open the quickshop and scroll to it
+    // A better solution is passing an arg from jomalone_mpp_quickshop_v1.js
+    if (!$qs_row.closest('.mpp-quickshop').length) {
+      // even though we have the clicked object, this basically double verifies we have an object to scroll to
+      var $scrollTo = typeof args.$productThumb == 'undefined' ? $('.active-qs') : args.$productThumb;
+      $scrollTo = $scrollTo.length ? $scrollTo : $(this);
+      var is_change_quickshop_view = Drupal.settings.globals_variables.is_change_quickshop_view !== undefined ? Drupal.settings.globals_variables.is_change_quickshop_view : false;
+
+      if (typeof args.$productThumb !== 'undefined') {
+        // use our custom scrollto to take into account how broken ie8 is
+        if (is_change_quickshop_view === true && site.client.isMobile) {
+          Drupal.jm.scrollToLegacy($scrollTo);
+        } else {
+          Drupal.jm.scrollToLegacy($scrollTo, 500, site.mpp.ux.top_offset + 340);
+        }
+      } else {
+        var fixed_header = $('.fixed-header').length ? $('.fixed-header').height() : 0;
+        var toolbar = $('#toolbar').length ? $('#toolbar').height() : 0;
+        var site_top_offset = -(fixed_header + toolbar + 10);
+        Drupal.jm.scrollToLegacy($scrollTo, 500, site_top_offset);
+      }
+    }
+  });
+
+  // bind close button
+  $qs_row.find('.close_quickshop').bind('click', function(e) {
+    e.preventDefault();
+    // we need to know what closed
+    var $qs_closed_pane = $(this).closest('.product-pane');
+    // slide up
+    $qs_row.find('.qs-layer').addClass('closing').slideUp(400, function() {
+      $(this).removeClass('closing');
+
+      $('.selectbox', $qs_row).selectBox('destroy'); // destroy the selectbox bindings
+      $(document).trigger('MPP:quickshopsDestroyed', [$qs_closed_pane]);
+      $qs_row.remove();
+      // Only remove the active class if another quickshop isn't opening
+      if (!$('.qs-row:has(.qs-layer)').length) {
+        $('.product').removeClass('active-qs');
+      }
+    });
+  });
+
+  site.quickshop.initAddToBag($addLink, args.productData.skus[0]);
+  site.backInStock.init($('.quickshop_wrapper a.add_bis'), args.productData.skus[0]);
+  site.comingSoon.init($('.quickshop_wrapper a.add_cs'), args.productData.skus[0]);
+  var $inactiveStockMsg = $('.inactive_stock_msg');
+  var $soldOutStockMsg = $('.sold_out_stock_msg');
+
+  $(document).unbind('sku:select').bind('sku:select', function(e, skuData) {
+    e.preventDefault();
+    site.backInStock.hide();
+    site.comingSoon.hide();
+    $addLink = $('.quickshop_wrapper a.add_to_cart, .quickshop_wrapper a.add_to_gift');
+
+    if (skuData.PRODUCT_ID === args.productData.PRODUCT_ID) {
+      // update sku inventory status only if found in L2 response (could be absent!)
+      if (typeof $(document).data(skuData.SKU_ID) != 'undefined') {
+        // default to hiding buy button unless L2 data says otherwise
+        skuData.isOrderable = 0;
+        $.extend(skuData, $(document).data(skuData.SKU_ID));
+      } else {
+        //Stored Sku data for future just in case L2 doesnt have all required fields
+        $(document).data(skuData.SKU_ID, skuData);
+      }
+
+      $('.spp_product_status > div').addClass('hidden');
+      if (site.productData.isTempOutOfStock(skuData)) {
+        site.backInStock.show();
+        skuData.isOrderable = 0;
+      } else if (site.productData.isComingSoon(skuData)) {
+        site.comingSoon.show();
+        skuData.isOrderable = 0;
+      } else if (site.productData.isInactive(skuData)) {
+        $inactiveStockMsg.removeClass('hidden');
+      } else if (site.productData.isSoldOut(skuData)) {
+        $soldOutStockMsg.removeClass('hidden');
+      }
+      // hide or show buy button
+      if (skuData.isOrderable === 1) {
+        $addLink.css('display', 'block');
+      } else {
+        $addLink.css('display', 'none');
+      }
+      selectSku(skuData);
+
+      var imgPath;
+
+      if (skuData && skuData.VIRTUAL_SKU_FLAG) {
+        imgPath = '/media/export/cms/products/165x307/jo_' + skuData.PRODUCT_ID.replace('PROD', '') + '_165x307.jpg';
+        if (args.productData.PROD_RGN_SUBHEADING !== null) {
+          // dont add in the background image
+          $('h2.product-title a + span.sub-heading').remove();
+          $('h2.product-title a').after('<span class="sub-heading">');
+          $('h2.product-title a + span.sub-heading').html(args.productData.PROD_RGN_SUBHEADING);
+        } else {
+          // do add in the background image
+          $('h2.product-title').addClass('with-image');
+          $('h2.product-title').css('background-image', 'url(/media/export/cms/titles/' + skuData.PRODUCT_ID.replace('PROD', '') + '.png)');
+        }
+      } else {
+        imgPath = '/media/export/cms/products/165x307/jo_' + skuData.PRODUCT_CODE + '_165x307.jpg';
+        // on 27/10/14 an export was run on the DB to make sure that only gift sets contain the sub heading, 
+        // so now, even if the set is not a virtual set we still need to always add the sub heading after the heading if 
+        // it exists
+        if (args.productData.PROD_RGN_SUBHEADING !== null) {
+          // dont add in the background image
+          $('h2.product-title a + span.sub-heading').remove();
+          $('h2.product-title a').after('<span class="sub-heading">');
+          $('h2.product-title a + span.sub-heading').html(args.productData.PROD_RGN_SUBHEADING);
+        }
+      }
+
+      // update sku image
+      $('.quickshop-container img.product_image').attr('src', imgPath).fadeIn(700);
+
+      //Engrave Buttons
+      site.quickshop.engraveButtons(skuData, $('.quickshop_wrapper'));
+    }
+  });
+
+  // have the custom drop-down links trigger sku:select events
+  $('ul.selectBox-options li a').bind('click', function(e) {
+    e.preventDefault();
+    var selectedSkuBaseId = $(this).attr('rel');
+    $(args.productData.skus).each(function(i, sku) {
+      if (sku.SKU_BASE_ID.toString() === selectedSkuBaseId) {
+        $(document).trigger('sku:select', sku);
+      }
+    });
+  });
+
+  //fix ipad bug 191251, as overlay for dropdown boxes not present on ipad we have to hook up native dropdown
+  $qs_row.find('select.selectbox').bind('change', function(e) {
+    e.preventDefault();
+    var selectedSkuBaseId = $(this).val();
+    $(args.productData.skus).each(function(i, sku) {
+      if (sku.SKU_BASE_ID.toString() === selectedSkuBaseId) {
+        $(document).trigger('sku:select', sku);
+      }
+    });
+  });
+
+  // trigger appropriate default
+  if ($('ul.selectBox-options li.selectBox-selected a').length) {
+    $('ul.selectBox-options li.selectBox-selected a').last().click();
+  } else {
+    $(document).trigger('sku:select', args.productData.skus[0]);
+  }
+
+  // push product data into dataLayer
+  if (window.dataLayer && window.gaDataLayer) {
+    gaDataLayer.event.quickShop(prod);
+  }
+}; //.launch
+
+site.quickshop.engraving = function() {
+  //Move the close button to inside a more specific defined area for X image overrides
+  var previewContainer = $('.overlay-container .spp-engraving-preview');
+  previewContainer.find('.background-swap').prepend($('.overlay-container').find('.close-container'));
+
+  //Multiple Engraving Choices Form Switching
+  $('.js-engraving-choice').click(function(e) {
+    e.preventDefault();
+    //Remove siblings already selected
+    $(this).siblings('a.engraving-choice').removeClass('engrave-style-chosen');
+    //Add selected to this button
+    $(this).addClass('engrave-style-chosen');
+    //find the correct form to show
+    var theClass = $(this).searchClassValue('engraving-form-choice-');
+    //Hide/Deactivate all forms
+    previewContainer.
+      find('.engraving-forms form').
+      removeClass('active-engraving-form').
+      addClass('hidden');
+    //Add choice selected class to the background-wrap wrapper
+    previewContainer.find('.background-swap').
+      removeClassPrefix('engraving-form-choice-').
+      addClass(theClass);
+    //Hide Choices screen
+    previewContainer.find('.engraving-query.choices').fadeOut('slow', function() {
+      //Now show the selected choice form
+      previewContainer.find('.engraving-forms').find('.' + theClass).
+        addClass('active-engraving-form').
+        removeClass('hidden').
+        fadeIn('slow');
+      generic.overlay.reCenter();
+    });
+  });
+
+  //Left Arrow Binding
+  previewContainer.find('.overlay-left-arrow-nav a.back-choices').click(function(e) {
+    e.preventDefault();
+    previewContainer.find('.background-swap').removeClassPrefix('engraving-form-choice-');
+    previewContainer.find('.engraving-forms form.active-engraving-form').fadeOut('slow', function() {
+      $(this).removeClass('active-engraving-form');
+      previewContainer.find('.engraving-query.choices').fadeIn('slow');
+    });
+  });
+
+  //Multiple Choice Font Switching but allow different forms different selected
+  previewContainer.find('.engraving-form .engraving-form-font-choice-btn a.change-font').click(function(e) {
+    e.preventDefault();
+    var theClass = $(this).searchClassValue('engrave-choice-');
+    var closestForm = $(this).closest('form.engraving-form');
+    //If we have copy set the font style
+    closestForm.find('input.engraving-message').each(function() {
+      if ($(this).val().length) {
+        $(this).removeClassPrefix('engrave-choice-').addClass(theClass);
+      }
+    });
+    closestForm.find('.new-canvas input').removeClassPrefix('engrave-choice-').addClass(theClass);
+    //Now set button selected styles
+    $(this).closest('.engraving-form-font-choice-btn').find('a.change-font').removeClass('engrave-style-chosen');
+    $(this).addClass('engrave-style-chosen');
+    //Now set the form value for the font
+    var value = $(this).searchClassValue('value-').replace('value-', '');
+    closestForm.find('input[name="MONOGRAM_FONT"]').val(value);
+  });
+
+  //Preview Button for Mobile
+  previewContainer.find('.engraving-form .engraving-form-element-preview').find('a.engraving-preview').click(function(e) {
+    e.preventDefault();
+    var isValidEngraveText = true;
+    var isEngraveText = true;
+    var engravingErrorMsg = '';
+    var closestForm = $(this).closest('.engraving-form');
+    var $engravingText = closestForm.find('input[name="MONOGRAM_TEXT"]').val();
+    var regExp = /^([0-9]|[a-z]| |\.|\[BR\])+$/i;
+    var $engraving_text_format_msg = '';
+    if ($engravingText.length) {
+      if (!regExp.test($engravingText)) {
+        isValidEngraveText = false;
+        engravingErrorMsg = 'engraving_text_format_msg';
+      }
+    }
+    if ($engravingText.trim().length === 0) {
+      isEngraveText = false;
+      engravingErrorMsg = 'engraving_text_required_msg';
+    }
+    if (isValidEngraveText && isEngraveText) {
+      //Hide this preview block
+      closestForm.find('.error_messages').removeClass('error_messages_display');
+      $(this).closest('.engraving-form-element-preview').hide();
+      //Hide the main form
+      closestForm.find('.engraving-edit-form').hide();
+      //Show Add To Bag button
+      closestForm.find('.engraving-save').show();
+      //Show Preview Image
+      closestForm.find('.engraving-form-preview').show();
+    } else {
+      if (engravingErrorMsg) {
+        $engraving_text_format_msg = closestForm.find('input#' + engravingErrorMsg).val();
+      }
+      closestForm.find('ul.error_messages').removeClass('error_messages_display').empty();
+      closestForm.find('ul.error_messages').addClass('error_messages_display').append($('<li>').append($engraving_text_format_msg));
+      return false;
+    }
+  });
+
+  //Back button inside preview for Mobile
+  previewContainer.find('.engraving-form .engraving-form-preview').find('.overlay-left-arrow-nav a.back-preview').click(function(e) {
+    e.preventDefault();
+    var closestForm = $(this).closest('.engraving-form');
+    //Hide the Add to Bag button
+    closestForm.find('.engraving-save').hide();
+    //Hide Preview Image
+    closestForm.find('.engraving-form-preview').hide();
+    //Show the preview block
+    closestForm.find('.engraving-form-element-preview').show();
+    //Show the main form
+    closestForm.find('.engraving-edit-form').show();
+  });
+
+  //Bind keyup, keydown paste and autocomplete for input text fields
+  previewContainer.find('.engraving-form input.engraving-message').on('input', function() {
+    var msgTextNode = $(this);
+    //If we have copy set the font style on input
+    if (msgTextNode.val().length) {
+      var theClass = $(this).closest('form.engraving-form').find('.engrave-style-chosen').searchClassValue('engrave-choice-');
+      $(this).removeClassPrefix('engrave-choice-').addClass(theClass);
+    } else {
+      $(this).removeClassPrefix('engrave-choice-');
+    }
+    //Update the preview copy
+    var theId = msgTextNode.attr('id').replace('txt-', 'preview-');
+    msgTextNode.closest('.engraving-form').find('.new-canvas').find('#' + theId).val($(this).val());
+    //Update Char count
+    var currentLength = msgTextNode.val().length;
+    var maxLength = msgTextNode.attr('maxlength') || 10;
+    //Check and force the length of the field whilst typing
+    if (currentLength > maxLength) {
+      msgTextNode.val(msgTextNode.val().substr(0, maxLength));
+      return false;
+    }
+    //Now update the counter
+    var messageLenNode = msgTextNode.closest('.engraving-form-line').find('.chars-left');
+    if (messageLenNode.length) {
+      messageLenNode.html(msgTextNode.val().length + '/' + maxLength);
+    }
+  });
+
+  //Return key within text field
+  previewContainer.find('.engraving-form input.engraving-message').on('keydown', function(e) {
+    if (e.keyCode === 13) {
+      $(this).closest('.engraving-form').find('.edit-engraving-form-cta a.engraving-save').trigger('click');
+    }
+  });
+
+  //Cancel
+  previewContainer.find('.engraving-form .edit-engraving-form-cta a.engraving-cancel').click(function(e) {
+    e.preventDefault();
+    generic.overlay.hide();
+  });
+
+  //Add to Cart
+  previewContainer.find('.engraving-form .edit-engraving-form-cta a.engraving-save').click(function(e) {
+    e.preventDefault();
+    var form = $(this).closest('form.engraving-form');
+    // retrieve form data
+    var params = form.engravingJSON();
+    //error messages
+    var error_node = form.find('ul.error_messages');
+    generic.jsonrpc.fetch({
+      method: 'form.rpc',
+      params: [params],
+      onBoth: function(r) {
+        var messages = r.getMessages();
+        //Filter messages to remove SUCCESS messages
+        if (messages) {
+          messages = $.grep(messages, function(e) {
+            return $.inArray('SUCCESS', e.tags) === -1;
+          });
+        }
+        //Filter messages to remove SUCCESS messages
+        //If we have error messages aftr stripping SUCCESS tags then show them otherwise we're successful
+        if (messages && messages.length) {
+          generic.showErrors(messages, error_node, form);
+        } else {
+          var resultData = r.getData();
+          $(document).trigger('addToCart.success', [resultData]);
+          generic.overlay.hide();
+        }
+        //If we have error messages aftr stripping SUCCESS tags then show them otherwise we're successful
+      }
+    });
+  });
+};
+
+$.fn.removeClassPrefix = function(prefix) {
+  this.each(function(i, el) {
+    var classes = el.className.split(' ').filter(function(c) {
+      return c.lastIndexOf(prefix, 0) !== 0;
+    });
+    el.className = $.trim(classes.join(' '));
+  });
+  return this;
+};
+
+$.fn.searchClassValue = function(prefix) {
+  var theClass = $(this).attr('class').match(new RegExp(prefix + '[0-9a-zA-Z]+(s+)?', 'g'));
+  if ($.isArray(theClass)) {
+    return theClass[0];
+  }
+  return false;
+};
+
+$.fn.engravingJSON = function() {
+  var form = this;
+  var formSerial = form.serializeArray();
+  // transform string into array of form elements
+  var paramStr = '',
+      params = {};
+  // iterate through collection to transform form name/value into key/value properties of a literal object string.
+  $.each(formSerial, function() {
+    var key = this.name, value = this.value;
+    if (params[key]) { //If the key exists
+      if (!$.isArray(params[key])) { //and its not current already an array
+        params[key] = new Array(params[key], value); //Then create a new array with Stirng as key 0 and this value as key 1
+      } else {
+        params[key].push(value); //Otherwise if its already an array lets add the new value to the array say 3rd or 4th input
+      }
+    } else {
+      params[key] = value; //Otherwise its a simply string store
+    }
+  });
+  //Join MONOGRAM_TEXT array if we have multiple lines
+  if ($.isArray(params['MONOGRAM_TEXT'])) {
+    params['MONOGRAM_TEXT'] = params['MONOGRAM_TEXT'].filter(function(val) {
+      return val.trim() ? val : false;
+    }).join('[BR]');
+  }
+  $.each(params, function(key, value) {
+    paramStr += '"' + key + '":"' + value + '",';
+  });
+  // parse the string and create the literal object
+  return JSON.parse('{' + paramStr.substring(0, paramStr.length - 1) + '}');
+};

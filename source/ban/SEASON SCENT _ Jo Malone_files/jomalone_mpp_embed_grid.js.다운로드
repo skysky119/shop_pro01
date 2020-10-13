@@ -1,0 +1,86 @@
+(function($) {
+
+window.site = site || {};
+var $addlinks;
+var skus = [];
+var mppInstance = 'mpp_uk_v1';
+
+site[mppInstance] = {
+  init : function() {
+    this.initSPPLink();
+  },
+  initSPPLink: function() {
+    var prods = [],
+      MPP_WIDTH_SWITCH_SIZE = 1014,
+      col_num = ($(window).width() > MPP_WIDTH_SWITCH_SIZE) ? 3 : 2;
+
+    $(page_data.catalog.mpp.rpcdata.categories).each(function(index, cat){
+      prods = prods.concat(cat.products);
+    });
+
+    $(".product-pane").each(function(index, element) {
+      // $(".mpp_product_tile span.quickshop").each(function(index, element){
+      $(".js-product-grid .mpp_product_tile:not('.hide-display')", element).each(function(index, element) {
+        var $qsLink = $("span.quickshop", $(this)),
+          comingSoonLink = $("a.coming-soon", $(this)),
+          backInStockLink = $("a.back-in-stock", $(this)),
+          soldOutLink = $("a.sold-out", $(this)),
+          shopNowLink = $("a.shop-now", $(this)),
+          prodId = $qsLink.attr("data-productid"),
+          prod = null,
+          comingSoonProd = 1,
+          tempOOSProd = 1,
+          soldOutProd = 1;
+
+        shopNowLink.hide();
+        comingSoonLink.hide();
+        backInStockLink.hide();
+        soldOutLink.hide();
+
+        for (var i=0, len=prods.length; i<len; i++) {
+          if (prods[i].PRODUCT_ID == prodId) {
+            prod = prods[i];
+            break;
+          }
+        }
+
+        $(prod.skus).each(function() {
+          if (!site.productData.isComingSoon(this)) {
+            comingSoonProd = 0;
+          }
+          if (!site.productData.isTempOutOfStock(this)) {
+            tempOOSProd = 0;
+          }
+          if (!site.productData.isSoldOut(this)) {
+            soldOutProd = 0;
+          }
+        });
+
+        if (soldOutProd) {
+          soldOutLink.show();
+          site.soldOut.init(soldOutLink, prod.skus[0]);
+        } else if (tempOOSProd) {
+          //backInStockLink.show();
+          //site.backInStock.init(backInStockLink, prod.skus[0]);
+          shopNowLink.show();
+        } else if (comingSoonProd) {
+          comingSoonLink.show();
+          site.comingSoon.init(comingSoonLink, prod.skus[0]);
+        } else {
+          shopNowLink.show();
+        }
+      }); // mpp_product_tile.each
+    }); // .product-pane.each
+  } // initSPPLink
+};
+
+Drupal.behaviors[mppInstance] = {
+  attach : function() {
+    site[mppInstance].data = {
+      category : page_data.catalog.mpp.rpcdata.categories[0]
+    };
+    site[mppInstance].init();
+  }
+};
+
+})(jQuery);

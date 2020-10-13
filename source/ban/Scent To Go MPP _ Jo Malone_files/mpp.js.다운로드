@@ -1,0 +1,370 @@
+var site = site || {},
+    page_data = page_data || {};
+var rb = rb || {};
+
+(function($, Drupal, window, document, undefined) {
+  'use strict';
+
+  site.mpp = {
+    categoryData: {},
+    $addLinks: null,
+    panesEnabled: false, // multiple mpp grids can be open simultaneously
+    init: function() {
+      this.categoryData = site.mpp.data.category;
+      // Things change :)
+      $(document).trigger('PAGEDATA:RESULT', 'catalog.mpp');
+      this.initQuickshopLinks();
+
+      // when there are visible products or sku status is refreshed, fire quickshop links logic
+      $(document).bind('MPP:beforeProductsVisible', this.initQuickshopLinks);
+      $(document).bind('MPP:refreshSkuStatus', this.initQuickshopLinks); 
+      $(document).bind('MPP:finderProductsVisible', this.initQuickshopLinks);
+    },
+    initQuickshopLinks: function() {
+      var prods = [],
+          MPP_WIDTH_SWITCH_SIZE = 1014,
+          col_num = $(window).width() > MPP_WIDTH_SWITCH_SIZE ? 3 : 2;
+
+      $(page_data.catalog.mpp.rpcdata.categories).each(function(index, cat) {
+        prods = prods.concat(cat.products);
+      });
+
+      $('.product-pane').each(function(index, element) {
+        var rowNum = 1;
+        // $(".mpp_product_tile span.quickshop").each(function(index, element){
+        $(".mpp_product_tile:not('.hide-display')", element).each(function(index, element) {
+          var $qsLink = $('span.quickshop', $(this)),
+              prodId = $qsLink.attr('data-productid'),
+              prod = null,
+              product_full_element = $(this);
+
+          for (var i = 0, len = prods.length; i < len; i++) {
+            if (prods[i].PRODUCT_ID === prodId) {
+              prod = prods[i];
+              break;
+            }
+          }
+          
+          $(this).removeClass(function() {
+            var rowClass = /(row_[0-9]*)/gi.exec($(this).attr('class'));
+            if (rowClass) {
+              rowClass = rowClass[1];
+              return rowClass;
+            }
+            return null;
+          });
+          $(this).addClass('row_' + rowNum);
+          if ((index + 1) % col_num === 0) {
+            rowNum++;
+          }
+
+          // reset all clicks
+          $qsLink.unbind('click');
+          // when clicked, add to end of row
+          $qsLink.bind('click', function(clickEvt) {
+            clickEvt.preventDefault();
+
+            // We get the last element in the row that this product is in
+            var rowName = /(row_[0-9]*)/gi.exec($(this).closest('.mpp_product_tile').attr('class'))[1];
+            var $after_object = $('.' + rowName, $(this).closest('.product-pane')).last();
+
+            // pass the object to quickshop and let it handle, launch the quickshop markup injection
+            $('.product .active-marker').remove();
+            $('.product').append('<div class="active-marker"></div>');
+            var $this = $(this);
+            site.quickshop.launch({productData: prod, inject: $after_object, $productThumb: $this.parents('.product') });
+            $('.js-access-removed-element-focus').removeAttr('aria-hidden');
+            $this.attr({'tabindex': '0', 'aria-expanded': $this.attr('aria-expanded') === 'true' ? 'false' : 'true'});
+            // Site restrict navigation in Quickshop
+            if (site.restrict_navigation !== undefined && site.restrict_navigation !== null) {
+              site.restrict_navigation($('.js-quickshop_wrapper'));
+            }
+          }); // $qsLink.bind
+        }); // mpp_product_tile.each
+      }); // .product-pane.each
+    }, // initQuickshopLinks
+    refreshSkuStatus: function(l2_prod_arr) {
+      $('.mpp_product_tile[data-productid]').each(function(i, prod_div) {
+        var prod_id = $(prod_div).attr('data-productid');
+        var prod_display = false;
+        // does the product have any displayable skus?
+        $(l2_prod_arr).each(function(index, prod) {
+          if (prod.PRODUCT_ID === prod_id) {
+            $(prod.skus).each(function() {
+              if (this.isOrderable === 1 || (this.INVENTORY_STATUS === 2)) {
+                prod_display = true;
+              }
+            });
+          }
+        });
+        if (!prod_display) {
+          $(prod_div).remove();
+        }
+      });
+      // after purging non-displayable products, do we have empty sections?
+      $('section.product-pane').each(function(i, section) {
+        if ($(section).find('.mpp_product_tile[data-productid]').length === 0) {
+          $(section).remove();
+        }
+      });
+      if (Drupal.settings.globals_variables.enable_preorder) {
+        var categories = page_data.catalog.mpp.rpcdata.categories;
+        for (var i = 0; i < categories.length; i++) {
+          $(categories[i].products).each(function(i, product) {
+            var $addToCartButton = $('.mpp_product_tile[data-productid = ' + product.PRODUCT_ID + '] a.btn-primary');
+            var preOrderCount = 0;
+            $(product.skus).filter(function(i, sku) {
+              if (sku.isPreOrder === 1) {
+                preOrderCount += 1;
+              }
+              if (!!$(document).data(this.SKU_ID)) {
+                if (product.skus.length === 1 && $(document).data(this.SKU_ID).INVENTORY_STATUS === 2 && sku.isPreOrder === 1) {
+                  var cartPreOrderSoldOut = rb.language ? rb.language.pre_order_sold_out_cta : site.preOrderTrans.preOrderCta;
+                  $addToCartButton.text(cartPreOrderSoldOut).addClass('pre_order_sold_out_cta');
+                  site.quickshop.setPreorderMessage($addToCartButton, $addToCartButton.html(), this.RELEASE_DATE, false);
+                }
+              }
+            });
+            if (preOrderCount === product.skus.length) {
+              var cartButtonText = rb.language ? rb.language.preorder_order_level : site.preOrderTrans.preOrderButton;
+              $addToCartButton.text(cartButtonText);
+              $addToCartButton.addClass('pre-order-btn');
+            }
+          });
+        }
+      }
+      $(document).trigger('MPP:refreshSkuStatus');
+    }
+  };
+
+  Drupal.behaviors.mppEmbedGrid = {
+    attach: function(context, settings) {
+      // init app controller
+      site.mpp.data = {
+        category: page_data.catalog.mpp.rpcdata.categories[0]
+      };
+
+      site.mpp.init();
+
+      // ux specic settings
+      site.mpp.ux = {};
+      var top_right = $('.top-right').length ? $('.top-right').css('min-height') : 0;
+      var toolbar = $('#toolbar').length ? $('#toolbar').height() : 0;
+      site.mpp.ux.top_offset = -parseInt(top_right, 10) - toolbar;
+      site.mpp.ux.speed_up = 500;
+      site.mpp.ux.speed_down = 1000;
+      site.mpp.panesEnabled = true; // sliding open function
+      site.mpp.mppqs = false; // the special quickshop-auto-open-instead-of-mpp-grid
+
+      var $productPanes = $('.product-pane');
+
+      // when all panes are set to start-open, disable panesEnabled and add disabled class
+      // if ($(".product-pane.start-open").length == $productPanes.length) {
+      //   site.mpp.panesEnabled = false; // disable clicks for other headers
+      //   $productPanes.addClass("disabled"); // hide arrow (mpp.css)
+
+      // if this is a special mpp-qs page (cologne-intense), we need to do different things
+      if ($('.mpp-quickshop').length !== 0) {
+        site.mpp.mppqs = true;
+        // Otherwise, if all sections have the classname "start-open", disable certain features
+      } else if ($('.product-pane.start-open').length === $productPanes.length) {
+        site.mpp.panesEnabled = false;
+        $productPanes.addClass('disabled');
+      }
+
+      ///
+      // show a section
+      ///
+      function showSection(section) {
+        // specific instructions for
+        if (section.hasClass('mpp-quickshop')) {
+          // use just openSection() to allow multiple sections to be open at the same time
+          site.mpp.ux.active_section = section;
+          openSection();
+        // if any section open, and we we click on open one again to close
+        } else if (site.mpp.ux.active_section && site.mpp.ux.active_section[0] === section[0]) {
+          // check if the active section is the one we just clicked
+          site.mpp.ux.active_section = undefined;
+          closeAll();
+        // if no section open
+        } else {
+          // set the current active section
+          site.mpp.ux.active_section = section;
+          // then close all before opening just our section
+          closeAll(openSection);
+        }
+      }
+
+      ///
+      // close a section (currently just closes all)
+      ///
+      function hideSection(section) {
+        site.mpp.ux.active_section = undefined;
+        // close everything
+        closeAll();
+      }
+
+      ///
+      // close every section
+      ///
+      function closeAll(callback) {
+        //shrink banner image
+        if ($('.product-pane').hasClass('open')) {
+          $('.product-pane.open .banner').animate({
+            height: '330px'
+          }, 500, function() {});
+
+          // close immediately
+          closeAllComplete(callback);
+        } else {
+          closeAllComplete(callback);
+        }
+      }
+
+      function closeAllComplete(callback) {
+        // only run callback once after all animation done
+        $.when($('.section-pane').slideUp(site.mpp.ux.speed_up)).then(function() {
+          // remove all "open" classes
+          $('.product-pane').removeClass('open');
+
+          // products are now hidden
+          $(document).trigger('MPP:productsHidden', [site.mpp.ux.active_section]);
+
+          if (callback && typeof callback === 'function') {
+            callback();
+          }
+        });
+      }
+
+      ///
+      // sections need to open by various means
+      ///
+      function openSection(callback) {
+        var openspeed = site.mpp.ux.speed_down,
+            tagProdID = null,
+            $temp_section = site.mpp.ux.active_section;
+
+        // add open class for future use
+        site.mpp.ux.active_section.addClass('open'); // show this
+
+        // timers help make sure that things that subscribe a little later can still ride this
+        setTimeout(function() {
+          $(document).trigger('MPP:beforeProductsVisible', [$temp_section]);
+        }, 100);
+
+        // tag work
+        if ($(site.mpp.ux.active_section).attr('data-pg-prod-id')) {
+          tagProdID = $(site.mpp.ux.active_section).attr('data-pg-prod-id');
+        }
+        $(document).trigger('MPP:productsTag', $(site.mpp.ux.active_section).attr('class') + tagProdID);
+
+        // toggle our first section pane, then callback if there is one
+        $('.section-pane', site.mpp.ux.active_section).slideDown(openspeed, function() {
+          // rebuild quickshop links, now that our products are visible
+          // also pass along our element to anything that needs is
+          $(document).trigger('MPP:productsVisible', [site.mpp.ux.active_section]);
+
+          // specifically we don't want start-open sections to scrollto
+          if (!site.mpp.ux.active_section.hasClass('start-open')) {
+            scrollToSection();
+          }
+        });
+      }
+
+      ///
+      //  jump to a section
+      ///
+      function scrollToSection(callback) {
+        // scroll to our section by passing this to a custom function that takes into account ie8
+        Drupal.jm.scrollToLegacy(site.mpp.ux.active_section, site.mpp.ux.speed_down, site.mpp.ux.top_offset,
+          // this is the "onAfter" function we can call
+          function() {
+            if (callback && typeof callback === 'function') {
+              callback();
+            }
+
+            //enlarge banner image
+            site.mpp.ux.active_section.find('.banner').stop().animate({
+              height: '500px'
+            }, 500, function() {
+              // Animation complete.
+            });
+          }); // Drupal.jm.scrollToLegacy()
+
+        // // scroll to our section
+        // $.scrollTo(site.mpp.ux.active_section, site.mpp.ux.speed_down, {
+        //   offset: site.mpp.ux.top_offset,
+        //   // after we're done, do something if callback exists
+        //   onAfter: function(){
+        //     if (callback && typeof(callback) === "function") {
+        //       callback();
+        //     }
+
+        //     //enlarge banner image
+        //     site.mpp.ux.active_section.find(".banner").stop().animate({
+        //       height: "500px"
+        //     }, 500, function() {
+        //       // Animation complete.
+        //     });
+        //   }
+        // });
+      }
+
+      ///
+      // UI
+      ///
+
+      // used in jomalone_mpp_hero_plaque, apparently
+      $('#explore').addClass('pane-bound');
+
+      // Clicking top explore button exposes MPP grid and slides it up
+      $('#explore').click(function(e) {
+        e.preventDefault();
+
+        // we are allowing interaction with the panes
+        if (site.mpp.panesEnabled) {
+          // click the first franchise header
+          $('.franchise').first().click();
+          scrollToSection();
+        // no panes interaction
+        } else {
+          site.mpp.ux.active_section = $productPanes.first();
+          scrollToSection();
+        }
+      });
+
+      // the header block above product grids
+      $('.franchise').click(function(e) {
+        e.preventDefault();
+
+        if (site.mpp.panesEnabled) {
+          // show the corresponding parent pane
+          showSection($(this).parent('.product-pane'));
+        }
+      });
+
+      // mpp select hovers
+      $('.product-grid').delegate('.product', 'mouseenter', function() {
+        $('.quickshop-link', $(this)).addClass('qs-active');
+        $('.quickshop-link-active:visible', $(this)).addClass('qs-active');
+      });
+      $('.product-grid').delegate('.product', 'mouseleave', function() {
+        $('.quickshop-link', $(this)).removeClass('qs-active');
+      });
+
+      //
+      if (site.mpp.panesEnabled) {
+        // the close button that shows in product grids
+        $('.close-row').click(function(e) {
+          e.preventDefault();
+          hideSection();
+        });
+        // automatically open the sections that have .start-open, this will close all other sections
+        $('.start-open .franchise').click();
+      } else {
+        $productPanes.addClass('open');
+        $('.product-pane section-pane').show();
+      }
+    } // attach
+  }; // behavior
+})(jQuery, Drupal, this, this.document);

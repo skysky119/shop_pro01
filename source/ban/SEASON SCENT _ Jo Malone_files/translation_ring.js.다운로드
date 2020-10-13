@@ -1,0 +1,263 @@
+var TranslationRing = TranslationRing || {};
+
+(function($) {
+  jQuery.extend(TranslationRing,
+    {
+      // I hate IE
+      updateUrlParameter: function(uri, key, value) {
+        // remove the hash part before operating on the uri
+        var i = uri.indexOf('#');
+        var hash = i === -1 ? ''  : uri.substr(i);
+        uri = i === -1 ? uri : uri.substr(0, i);
+
+        var re = new RegExp("([?&])" + key + "=.*?(&|$)", "i");
+        var separator = uri.indexOf('?') !== -1 ? "&" : "?";
+
+        if (!value) {
+          // remove key-value pair if value is empty
+          uri = uri.replace(new RegExp("([?&]?)" + key + "=[^&]*", "i"), '');
+          if (uri.slice(-1) === '?') {
+            uri = uri.slice(0, -1);
+          }
+          // replace first occurrence of & by ? if no ? is present
+          if (uri.indexOf('?') === -1) uri = uri.replace(/&/, '?');
+        } else if (uri.match(re)) {
+          uri = uri.replace(re, '$1' + key + "=" + value + '$2');
+        } else {
+          uri = uri + separator + key + "=" + value;
+        }
+        return uri + hash;
+      },
+
+      getParameterByName: function(name, url) {
+        if (!url) url = window.location.href;
+        name = name.replace(/[\[\]]/g, "\\$&");
+        var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+          results = regex.exec(url);
+        if (!results) return null;
+        if (!results[2]) return '';
+        return decodeURIComponent(results[2].replace(/\+/g, " "));
+      },
+
+      getUrlParts: function(url) {
+        var a = document.createElement('a');
+        a.href = url;
+
+        return {
+          href: a.href,
+          host: a.host,
+          hostname: a.hostname,
+          port: a.port,
+          pathname: a.pathname,
+          protocol: a.protocol,
+          hash: a.hash,
+          search: a.search
+        };
+      },
+
+      partsToUrl: function(parts) {
+        var relative = parts['pathname'] + parts['search'] + parts['hash'];
+        var base = parts['protocol'] + '//' + parts['hostname'];
+        if(parts['port']) {
+          base += ':' + parts['port'];
+        }
+        var url = base + relative;
+        return url;
+      },
+
+      removeUrlParameter: function(url, parameter) {
+        //prefer to use l.search if you have a location/link object
+        var urlparts= url.split('?');   
+        if (urlparts.length>=2) {
+
+          var prefix= encodeURIComponent(parameter)+'=';
+          var pars= urlparts[1].split(/[&;]/g);
+
+          //reverse iteration as may be destructive
+          for (var i= pars.length; i-- > 0;) {    
+            //idiom for string.startsWith
+            if (pars[i].lastIndexOf(prefix, 0) !== -1) {  
+              pars.splice(i, 1);
+            }
+          }
+
+          url= urlparts[0] + (pars.length > 0 ? '?' + pars.join('&') : "");
+          return url;
+        } else {
+          return url;
+        }
+      },
+
+      gather_languages: function() {
+        if(!window.navigator.languages) {
+          return [window.navigator.language];
+        }
+        return window.navigator.languages;
+      },
+
+      get_languages_string: function() {
+        var languages = this.gather_languages();
+        return languages.join(',');
+      },
+
+      get_ring_key: function(namespace) {
+        var settings = Drupal.settings;
+        if (!('translation-ring' in settings)) {
+          return;
+        }
+
+        // i should really make this a class instead of storing globals
+        this.current_lang = Drupal.settings['translation-ring']['current_lang'];
+        var default_path = 'https://' + Drupal.settings['translation-ring']['base_domain'];
+
+        var url_parts = this.getUrlParts(default_path);
+        // note that on dev envs. ajax calls won't send basic auth unless on
+        // same basic auth realm
+        url_parts['protocol'] = window.location.protocol;
+        url_parts['hostname'] = window.location.hostname;
+        this.default_path = this.partsToUrl(url_parts);
+
+        this.namespace = namespace;
+
+        var ring_keys = settings['translation-ring']['ring_keys'];
+
+        if(!(namespace in ring_keys)) {
+          return;
+        }
+        var ring_key = ring_keys[namespace]['id'];
+        return ring_key;
+      },
+
+      get_ring: function(namespace) {
+
+        var ring_key = this.get_ring_key(namespace);
+        if(!ring_key) {
+          return;
+        }
+
+        var url = this.default_path + 'translation-ring/' + namespace + '/' + ring_key;
+
+        jQuery.ajax({
+          url: url,
+          success: function(data, status, xhr) {
+            jQuery(document).trigger('translation-ring', [namespace, data]);
+          },
+        });
+
+        return true;
+      },
+
+      set_locale: function(namespace, locale) {
+        var key = 'TranslationRing:' + namespace;
+        var current_locale = this.get_locale(namespace);
+
+        if(current_locale == locale) {
+          return;
+        }
+
+        jQuery.cookie.raw = true;
+        jQuery.cookie(key, locale, { 'path': '/' });
+        jQuery.cookie.raw = false;
+        console.log('set Translation ring coookie:');
+      },
+
+      get_locale: function(namespace) {
+        var key = 'TranslationRing:' + namespace;
+        var val = jQuery.cookie(key);
+        return val;
+      },
+
+      choose_locale: function(locales, locale) {
+        if (!(locale in locales)) {
+          return;
+        }
+
+        this.set_locale(this.namespace, locale);
+
+        // no forward, already on same language
+        if (locale == this.current_lang) {
+          return false;
+        }
+
+        var target_url = locales[locale].url;
+        return target_url;
+      },
+
+      remove_locale_to_url: function(url, namespace) {
+        var url_parts = this.getUrlParts(url);
+        var new_url = this.removeUrlParameter(url, namespace + '-tr-lang');
+        return new_url;
+      },
+
+      add_locale_to_url: function(target_url, namespace, locale) {
+        return this.updateUrlParameter(target_url, namespace + '-tr-lang', locale);
+      },
+
+      get_locale_from_url: function(url, namespace) {
+        var locale = this.getParameterByName(namespace + '-tr-lang', url);
+        return locale;
+      },
+
+      show_overlay: function(args) {
+        var defaults = {
+          'default_click_handler': true,
+        };
+        var options = jQuery.extend({}, defaults, args);
+
+        if (!('locales' in options)) {
+          options.locales = this.locales;
+        }
+
+        if (!('content' in options)) {
+          options.content = this.generate_overlay(options.locales);
+        }
+
+        var tr = this;
+        if (options.default_click_handler) {
+          $('.tr-lang-link', options.content).on('click', function(event) {
+            var locale = $(this).attr('data-tr-lang');
+            event.preventDefault();
+
+            var target_url = tr.choose_locale(options.locales, locale);
+            if (!target_url) {
+              generic.overlay.hide();
+              return;
+            }
+
+            target_url = TranslationRing.add_locale_to_url(target_url, tr.namespace, locale);
+            window.location.replace(target_url);
+            return true;
+          });
+        }
+
+        generic.overlay.launch({
+          content: options.content,
+          includeBackground: true,
+          hideOnClickOutside: true,
+        });
+
+        return options.content;
+      },
+
+      /*
+       * Just a default overlay dom made in jQuery.
+       */
+      generate_overlay: function(locales) {
+        var content = $('<div/>');
+        content.append($('<h2 />', {'text': 'Choose Site'}));
+        for(locale in locales) {
+          var url = locales[locale].url;
+          var link = $('<a />', {
+            'href': url,
+            'text': locale,
+            'data-tr-lang': locale,
+            'class': 'tr-lang-link',
+          });
+          content.append(link).append('<br />');
+        }
+        return content;
+      },
+    }
+  );
+
+})(jQuery);

@@ -1,0 +1,17 @@
+(function($) {
+  Drupal.behaviors.customAnchorBanner = {
+    attach: function() {
+      //Below function overrides the traditional anchor tagging, as this is trying to reach the id before the content is loaded. we use the js to create URL's with custom anchors that scrolls to a banner that contains the same anchor
+      if (location.hash && Drupal.settings.globals_variables.declare_your_scent_anchor) {
+        var navHeight = $('.fixed-header').outerHeight();
+        var anchorId = location.hash.substr(1);
+        var anchorBanner = document.getElementById(anchorId);
+        if (anchorBanner && anchorId === anchorBanner.id) {
+          $('html, body').animate({
+            scrollTop: $('#' + anchorId).offset().top - navHeight
+          }, 1000);
+        }
+      }
+    }
+  };
+})(jQuery);

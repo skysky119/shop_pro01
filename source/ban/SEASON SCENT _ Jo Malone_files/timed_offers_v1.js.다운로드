@@ -1,0 +1,421 @@
+/**
+ * This library adds base functionality for timed offers.
+ * It requires the ctrlopt.js library and will not run if that is not loaded.
+ *
+ * TimedOfferModel is a model in an MV pattern.
+ * TimedOfferPopup is a view. Other views can be added to the library as needed. They must subclass ctrlopt.mvc.AbstractView
+ * to work with the TimedOfferModel. A controller can be added as well by subclassing ctrlopt.mvc.AbstractController.
+ *
+ */
+(function ($) {
+  "use strict";
+  // Check that the ctrlopt library is available
+  if (typeof ctrlopt === 'undefined' || ctrlopt === null || ctrlopt !== Object(ctrlopt)) {
+    return;  //Oh, its not. Goodbye!
+  }
+  /**
+   * ctrlopt.TimedOfferModel creates a model in an MV/C pattern. Controls the timing of offers.
+   *     Configure using TimedOfferModel.setData. Won't run without being configured.
+   * @constructor
+   */
+  ctrlopt.TimedOfferModel = function () {
+    ctrlopt.TimedOfferModel.superclass.constructor.call(this);
+    this.dataSet = false;
+    this.offers = [];
+  };
+
+  //TimedOfferModel is a Publisher in a Publisher Subscriber (event listening) pattern.
+  ctrlopt.extend(ctrlopt.TimedOfferModel, ctrlopt.Publisher);
+
+  /**
+   * TimedOfferModel.setData configures the model. Tells it what offer templates to use and where to place offers in DOM.
+   * @param options Object
+   *       @member offers JQuery required jquery representing set of offer elements. The model expects these to have
+   *                  the timed offer start and end date data attributes - basically these should be the
+   *                  CMS template 'timed_offer_popup_v1' or a clone of it.
+   *
+   *
+   *       @member cookieName String optional   name of cookie to set. Defaults to 'SITE-WIDE-OFFER-POPUP'.
+   *       @member cookieValue String optional  value of cookie. Defaults to '1'.
+   *       @member useCookie Boolean optional   Use the cookie or don't. Optional. Defaults to true.
+   *       @member onlyShowOnLoad Boolean optional Set to only show offer on a page load, or to show whenever the starts based on timer.
+   *                   Optional. Defaults to false.
+   */
+  ctrlopt.TimedOfferModel.prototype.setData = function(options) {
+    if (!options.offers || !options.offers instanceof jQuery || !options.offers.length) {
+      throw new TypeError();
+    }
+
+    var me = this;
+
+    function processOffer() {
+      var now = new Date(),
+        $this = $(this),
+        offerCode = $this.attr('data-offer-code'),
+        pullFromOM = parseInt($this.attr('data-use-om')),
+        myOffer = {
+          offerElem: $this,
+          offerCode: (typeof offerCode === 'string') ? offerCode.toLowerCase() : null,
+          pullFromOM: (pullFromOM) ? true : false
+        };
+
+      if ($this.hasClass('default')) {
+        me.defaultOffer = me.defaultOffer || myOffer;
+      } else {
+        myOffer.startDate = new Date(
+          Date.UTC (
+            parseInt($this.attr('data-offer-start-year')),
+            parseInt($this.attr('data-offer-start-month')) - 1,
+            parseInt($this.attr('data-offer-start-day')),
+            parseInt($this.attr('data-offer-start-hour')),
+            parseInt($this.attr('data-offer-start-minute'))
+          )
+        );
+        myOffer.endDate = new Date(
+          Date.UTC (
+            parseInt($this.attr('data-offer-end-year')),
+            parseInt($this.attr('data-offer-end-month')) - 1,
+            parseInt($this.attr('data-offer-end-day')),
+            parseInt($this.attr('data-offer-end-hour')),
+            parseInt($this.attr('data-offer-end-minute'))
+          )
+        );
+        if (now.getTime() <= myOffer.endDate.getTime()) {
+          me.offers.push(myOffer);
+        } else {
+          myOffer = null;
+        }
+      }
+    }
+
+
+    options.offers.each(processOffer);
+
+    this.cookieName = (typeof options.cookieName === 'string') ? options.cookieName : 'SITE-WIDE-OFFER-POPUP';
+    this.cookieValue = (typeof options.cookieValue !== 'undefined' && options.cookieValue !== null) ? String(options.cookieValue) : '1';
+    this.useCookie = (options.useCookie === false) ? false : true;
+    this.useTimer = (options.onlyShowOnPageLoad === true) ? false : true;
+    this.dataSet = true;
+  };
+
+  ctrlopt.TimedOfferModel.prototype.findOffer = function (date) {
+    date = date || new Date();
+    var time = date.getTime();
+    for (var i = 0, len = this.offers.length; i < len; i++) {
+      var o = this.offers[i],
+        start = o.startDate.getTime(),
+        end = o.endDate.getTime();
+
+
+      if (time >= start && time <= end) {
+        return  o;
+      }
+    }
+    return this.defaultOffer;
+  };
+
+  ctrlopt.TimedOfferModel.prototype.findNext = function(date) {
+    date = date || new Date ();
+    var time = date.getTime();
+
+    for (var i = 0, len = this.offers.length; i < len; i++) {
+      var o = this.offers[i],
+        start = o.startDate.getTime(),
+        end = o.endDate.getTime();
+
+      if (time < start) {
+        return  o;
+      }
+    }
+    return this.defaultOffer;
+  };
+
+  ctrlopt.TimedOfferModel.prototype.update = function() {
+    if (!this.dataSet) {
+      return;
+    }
+    var next, interval,
+      me = this,
+      now = new Date(),
+      lastOffer = this.currentOffer,
+      cName = this.cookieName,
+      cVal = this.cookieValue,
+      hasGenCookie = (typeof generic === 'object' && typeof generic.cookie === 'function') && this.useCookie;
+
+    function setCookie(cExpires) {
+      if (hasGenCookie) {
+        var midnight = new Date();
+        midnight.setHours(23, 59, 59);
+
+        if (cExpires instanceof Date) {
+          cExpires = (cExpires.getTime() < midnight.getTime()) ? cExpires : midnight;
+        } else {
+          cExpires = midnight;
+        }
+
+        generic.cookie(cName, cVal, {expires: cExpires, path: '/'});
+      }
+    }
+
+    function setTimer() {
+      if (me.timer) {
+        clearTimeout(me.timer);
+      }
+
+      if (me.currentOffer === me.defaultOffer) {
+        next = me.findNext(now);
+        if (next === me.defaultOffer) {
+          setCookie();
+          return;
+        }
+        setCookie(next.startDate);
+        next = next.startDate.getTime();
+      } else {
+        setCookie(me.currentOffer.endDate);
+        next = me.currentOffer.endDate.getTime();
+      }
+
+      if (me.useTimer) {
+        interval = next - now.getTime();
+        me.timer = setTimeout(me.update.bind(me), interval);
+      }
+    }
+
+    function dispatchUpdate () {
+      me.fire('update', (me.currentOffer) ? me.currentOffer.offerElem : null );
+
+      setTimer();
+    }
+
+    this.currentOffer = this.findOffer(now);
+    if (this.currentOffer && this.currentOffer === lastOffer) {
+      return;
+    }
+
+    if (hasGenCookie) {
+      if (typeof generic.cookie(cName) !== 'undefined') {
+        setTimer();
+        return;
+      }
+    }
+
+    if (this.currentOffer && this.currentOffer.offerCode) {
+      generic.jsonrpc.fetch({
+        method: "offer",
+        params: [this.currentOffer.offerCode],
+        onSuccess: function(rpc) {
+          var offerData = rpc.getValue();
+
+          if (offerData && offerData.timing && offerData.timing === 'active') {
+            if (me.currentOffer.pullFromOM) {
+              if (offerData['text.header']) {
+                me.currentOffer.offerElem.find('.offer-header').html(offerData['text.header']);
+              }
+              if (offerData.description) {
+                me.currentOffer.offerElem.find('.offer-details').html(offerData.description);
+                me.currentOffer.offerElem.find('.offer-code-display').remove();
+              }
+              if (offerData.benefits && offerData.benefits instanceof Array) {
+                var href, bens;
+                for (var i = 0, len = offerData.benefits.length; i < len; i++) {
+                  bens = offerData.benefits[i];
+                  if (bens === Object(bens) && typeof bens.shop_now_url === 'string') {
+                    href = bens.shop_now_url;
+                    break;
+                  }
+                }
+                if (href) {
+                  me.currentOffer.offerElem.find('.button').attr('href', href);
+                }
+              }
+            }
+            dispatchUpdate();
+          } else {
+            me.currentOffer = me.defaultOffer;
+            dispatchUpdate();
+          }
+        },
+        onError: function (rpc) {
+          me.currentOffer = me.defaultOffer;
+          dispatchUpdate();
+        }
+      });
+      /* Keeping this in case the above code is rejected */
+      /*generic.jsonrpc.fetch({
+        method: "offer.valid",
+        params: [{"offer": this.currentOffer.offerCode}],
+        onSuccess: function(rpc) {
+          if (rpc.getValue() === 1) {
+            dispatchUpdate();
+          } else {
+            me.currentOffer = me.defaultOffer;
+            dispatchUpdate();
+          }
+        },
+        onError: function (rpc) {
+          me.currentOffer = me.defaultOffer;
+          dispatchUpdate();
+        }
+      });*/
+    } else {
+      dispatchUpdate();
+    }
+  };
+
+  ctrlopt.TimedOfferModel.prototype.getData = function() {
+    return (this.dataSet) ? {defaultOffer: this.defaultOffer, offers: this.offers} : null;
+  };
+
+
+  /**
+   * AbstractTimedOffers is an abstract class that supplies base functionality for concrete views of the
+   * TimedOfferModel.
+   *
+   * @param domParent JQuery required    a jquery object that contains a DOM element that the popups will be
+   *                                     added to. If the jquery object contains a set of elements the first
+   *                                     will be used.
+   * @constructor
+   */
+  ctrlopt.AbstractTimedOffers = function (domParent) {
+    ctrlopt.AbstractTimedOffers.superclass.constructor.call(this);
+    this.initialised = false;
+    if (!domParent || !domParent instanceof jQuery || !domParent.length) {
+      throw new TypeError();
+    }
+    this.offersContainer = domParent.first();
+  };
+
+  ctrlopt.extend(ctrlopt.AbstractTimedOffers, ctrlopt.mvc.AbstractView);
+
+
+  ctrlopt.AbstractTimedOffers.prototype.onUpdate = function(data) {
+    var modData;
+    if (!this.initialised) {
+      modData = this.model.getData();
+      if (typeof modData === null) {
+        return;
+      }
+
+      this.offers = modData.offers;
+      this.defaultOffer = modData.defaultOffer;
+      this.initialised = true;
+    }
+    this.lastOffer = this.currentOffer;
+    this.currentOffer = data;
+    if (this.currentOffer === this.lastOffer || this.currentOffer === null) {
+      return;
+    }
+
+    this.attachOffer();
+  };
+
+  ctrlopt.AbstractTimedOffers.prototype.attachOffer = function() {
+    throw new Error('ctrlopt.AbstractTimedOffers.attachOffer is an abstract method that should be overridden by concrete subclasses of ctrlopt.AbstractTimedOffers');
+  };
+
+
+  /**
+   * TimedOfferPopups makes a view of the TimedOfferModel that manages the display of timed offer popups.
+   *    It prepends them to the parent jquery element provided as the first argument and fades them in. It
+   *    subclasses AbstractTimedOffers
+   *
+   * @param domParent JQuery required    a jquery object that contains a DOM element that the popups will be
+   *                                     added to. If the jquery object contains a set of elements the first will be used.
+   * @constructor
+   */
+  ctrlopt.TimedOfferPopups = function (domParent) {
+    ctrlopt.TimedOfferPopups.superclass.constructor.call(this, domParent);
+  };
+
+  ctrlopt.extend(ctrlopt.TimedOfferPopups, ctrlopt.AbstractTimedOffers);
+
+
+  ctrlopt.TimedOfferPopups.prototype.attachOffer = function() {
+    var lastZ,
+      me = this;
+
+    this.currentOffer.prependTo(this.offersContainer);
+    lastZ = (!this.lastOffer) ? this.currentOffer.css('zIndex') : this.lastOffer.css('zIndex');
+    if(lastZ !== 'auto') {
+      this.currentOffer.css('zIndex', lastZ + 1);
+    }
+    this.currentOffer.fadeIn(1000, function () {
+      var $this = $(this);
+      function close(e) {
+        var t = e.target,
+          curT = e.currentTarget;
+        if (t !== curT) {
+          return;
+        }
+        e.preventDefault();
+        $this.fadeOut(1000, function () {
+          $this.remove();
+          me.currentOffer = null;
+        });
+      }
+      if (lastZ !== 'auto') {
+        $this.css('zIndex', lastZ);
+      }
+      $this.click(close);
+      $this.find('.close').click(close);
+    });
+    if(this.lastOffer) {
+      this.lastOffer.fadeOut(1000, function () {
+        $(this).remove();
+      });
+    }
+  };
+
+
+
+  /**
+   * TimedOfferPage makes a view of the TimedOfferModel that manages the display of offers on timed offer pages.
+   *    It appends them to the parent jquery element provided as the first argument and fades them in. It
+   *    subclasses AbstractTimedOffers
+   *
+   * @param domParent JQuery required    a jquery object that contains a DOM element that the popups will be
+   *                                     added to. If the jquery object contains a set of elements the first will be used.
+   * @constructor
+   */
+  ctrlopt.TimedOfferPage = function (domParent) {
+    ctrlopt.TimedOfferPage.superclass.constructor.call(this, domParent);
+  };
+
+  ctrlopt.extend(ctrlopt.TimedOfferPage, ctrlopt.AbstractTimedOffers);
+
+
+  ctrlopt.TimedOfferPage.prototype.attachOffer = function() {
+    var lastZ,
+      me = this;
+
+    this.currentOffer.prependTo(this.offersContainer);
+    lastZ = (!this.lastOffer) ? this.currentOffer.css('zIndex') : this.lastOffer.css('zIndex');
+    if(lastZ !== 'auto') {
+      this.currentOffer.css('zIndex', lastZ + 1);
+    }
+    this.currentOffer.fadeIn(1000, function () {
+      var $this = $(this);
+      function close(e) {
+        var t = e.target,
+          curT = e.currentTarget;
+        if (t !== curT) {
+          return;
+        }
+        e.preventDefault();
+        $this.fadeOut(1000, function () {
+          $this.remove();
+          me.currentOffer = null;
+        });
+      }
+      if (lastZ !== 'auto') {
+        $this.css('zIndex', lastZ);
+      }
+    });
+    if(this.lastOffer) {
+      this.lastOffer.fadeOut(1000, function () {
+        $(this).remove();
+      });
+    }
+  };
+
+})(jQuery);

@@ -1,0 +1,58 @@
+    @charset "utf-8";
+    /*     
+    .breadcrumb { clear: both; width: 1280px; margin-top: 205px auto;}
+    .breadcrumb li a, .breadcrumb li span {display: inline-block; position: absolute; padding-right: 18px; line-height: 32px;} 
+    .breadcrumb li a::after { content:">"; padding-left: 20px;}  */
+    
+    /* 서브 배너 */
+    .vs { clear:both; width: 100%; margin: 0 auto;}
+    .vs .ban, .ban li { width: 100%;}
+    .ban li img { width: 100%; margin-top: -27px;;} 
+
+    .page_tit {clear: both; width: 100%; }
+    .page_tit li { background-color: blanchedalmond; width: 100%;  height: 100px; 
+    user-select: none; font-size: xx-large; font-weight: 900; text-align: center; line-height: 90px; color: #111; }
+    .page_tit li a:link { color: black; cursor: auto;}
+    .page_tit li a:visited { color: black; user-select: none; cursor: none;}
+
+    .btn_group { clear: both; display: block; float: left; width: 1280px; line-height: 50px; margin: 0 auto; margin-top: 30px;}
+
+    .item_tit { font-size: 20px; text-align: center;}
+    .item_com { font-size: 16px; text-align: center;}
+
+    .item_box { clear: both; }
+    .item_box li { float: left; margin-right: 160px ; width: 320px;
+        height: 300px; margin-top: 150px;  }
+    .item_box ul li:nth-child(3n) { margin-right: 0; }
+    .item_box li img { display:block; width: 220px; margin-left: 50px;}
+    .item_box ul { float:left; display:none; }
+
+    .ra_item { display: none; }
+    #ra0:checked ~ .item_box ul { display:block;  }
+    #ra1:checked ~ .item_box .item1 { display:block; }
+    #ra2:checked ~ .item_box .item2 { display:block; }
+    #ra3:checked ~ .item_box .item3 { display:block; }
+    #ra4:checked ~ .item_box .item4 { display:block; }
+    #ra5:checked ~ .item_box .item5 { display:block; }
+    .lb_box { clear:both; }
+    .lb_box li { float:left; }
+    .lb_box li label { display:block; width: 90px; height: 36px; 
+        line-height: 36px; text-align:center; background:#999; 
+        margin:12px 5px 12px 5px; cursor:pointer; color:black; border-radius: 30px; }
+    #ra0:checked ~ .lb_box .bt0 { color:#fff; background:black; border-radius: 30px; }
+    #ra1:checked ~ .lb_box .bt1 { color:#fff; background:black; border-radius: 30px; }
+    #ra2:checked ~ .lb_box .bt2 { color:#fff; background:black; border-radius: 30px; }
+    #ra3:checked ~ .lb_box .bt3 { color:#fff; background:black; border-radius: 30px; }
+    #ra4:checked ~ .lb_box .bt4 { color:#fff; background:black; border-radius: 30px; }
+    #ra5:checked ~ .lb_box .bt5 { color:#fff; background:black; border-radius: 30px; }
+
+    .content {
+    clear: both;
+    width: 1280px;
+    height: 2450px;    
+    margin: 0 auto;
+    }
+
+    .ft_wrap {
+        margin-top: -50px;
+    }

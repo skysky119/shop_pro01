@@ -1,0 +1,1027 @@
+/*global prodcat*/
+(function(site, $) {
+  var formCaptureObj = {}, linkCaptureObj = {};
+
+  Drupal.behaviors.analyticsBehavior = {
+    attached: 0,
+
+    linkToPage: function() {
+      window.open(linkCaptureObj.href, linkCaptureObj.target);
+    },
+
+    setLinkCapture: function(href, target) {
+      linkCaptureObj.href = href;
+      linkCaptureObj.target = target;
+    },
+
+    submitForm: function() {
+      formCaptureObj.form.off('submit');
+      formCaptureObj.form.trigger('submit');
+    },
+
+    stripOutMarkup: function(str) {
+      return str.replace(/(<([^>]+)>)/ig, '');
+    },
+
+    trackHomePageEvents: function() {
+    },
+
+    // Accepts an array of PRODUCT_IDS, returns an array of positions
+    getProductPositions: function(productIds) {
+      var positions = [];
+      var i;
+      var j = productIds.length;
+      if (window.hasOwnProperty('prodcat') && prodcat.hasOwnProperty('data') && prodcat.data.hasOwnProperty('pids')) {
+        for (i = 0; i < j; i++) {
+          positions.push(this.findElementIndex(prodcat.data.pids, productIds[i]));
+        }
+      }
+      return positions;
+    },
+
+    // Examples of brand specific overrides for event handling
+
+    addToCart: function(eventData) {
+      site.track.addToCart(Object.assign({}, eventData));
+    },
+
+    addToFavorites: function(eventData) {
+      site.track.addToFavorites(Object.assign({}, eventData));
+    },
+
+    removeFromCart: function(eventData) {
+      site.track.removeFromCart(Object.assign({}, eventData));
+    },
+
+    // End examples brand specific overrides for event handling
+
+    attachEvents: function(context) {
+      // all code here
+      var self = this;
+      var drupalAnalyticsSettings = Drupal.settings.analytics ? Drupal.settings.analytics.analytics_tagging_enabled : false;
+      var eventObj = {};
+      if (self.attached) {
+        return;
+      }
+
+      // Track Home Page Events
+      if (location.pathname === '/') {
+        self.trackHomePageEvents();
+      }
+
+      // Track Brand Logo
+      $('.js-logo-link, a.logo-link', context).on('click', function(event) {
+        var obj;
+        event.preventDefault();
+        self.setLinkCapture($(this).attr('href'), '_self');
+        obj = {
+          event_name: 'logo_click',
+          event_category: 'global',
+          event_action: 'logo clicked'
+        };
+        site.track.evtLink(obj, self.linkToPage);
+      });
+
+      // Track Gloabl Navigation Elements
+      /*$('#navigation span.main-link, #navigation .col ul > li > a', context).on('click', function() {
+        var obj = {
+          event_name: 'navigation_click',
+          event_category: 'global',
+          event_action: 'nav clicked',
+          event_label: $(this).text()
+        };
+        site.track.evtLink(obj);
+      });*/
+
+      // Track Navigation Click - PC
+      $('.main-link a, .menu-item a', context).on('click', function() {
+        var promoName = '';
+
+        if ($(this).closest('div').hasClass('main-nav-item-3-4-col-v1')) {
+          promoName = $(this).text();
+        } else {
+          var navElemLast = $(this).text();
+          promoName = $(this).closest('.main-nav-item-3-4-col-v1').children(':first').text().trim() + '>';
+          var navClass = $(this).parent().attr('class').substring(17).split(' ');
+          for (var i = 0; i < 3; i++) {
+            var navClassText = navClass[0];
+            var navElemNext;
+            var navElemNextText = '';
+            $(this).parents('.col').prev('.col').find('li').each(function() {
+              if ($(this).attr('data-child-category-id') === navClassText) {
+                navElemNext = $(this).attr('class').substring(17).split(' ');
+                navElemNextText = $(this).text().trim();
+                return false;
+              }
+            });
+            navElemNextText = typeof navElemNextText === 'undefined' || navElemNextText === '' ? navElemNextText : navElemNextText + '>';
+            promoName += navElemNextText;
+            navClass = navElemNext;
+          }
+          promoName += navElemLast;
+        }
+
+        if (typeof promoName !== 'undefined' && promoName !== '') {
+          site.track.navigationClick({
+            promo_name: [promoName]
+          });
+        }
+      });
+
+      // Track Navigation Click - Mobile
+      $('.mobile-menu-item a', context).on('click', function() {
+        var navElemLast = $(this).text();
+        var $navElems = $(this).parents('.mobile-menu-item').children(':nth-child(2)');
+        var promoName = '';
+        for (var i = 0; i < $navElems.length; i++) {
+          if (i === $navElems.length - 1) {
+            promoName += $($navElems[i]).text();
+          } else {
+            promoName += $($navElems[i]).text() + '>';
+          }
+        }
+        promoName += navElemLast;
+
+        if (typeof promoName !== 'undefined' && promoName !== '') {
+          site.track.navigationClick({
+            promo_name: [promoName]
+          });
+        }
+      });
+
+      // Track Product Click
+      $(document).on('click', '.mpp_product_tile a, .js-access-content a, .product-title, .product_image, .product-thumb, .product-name a, .more a', function() {
+        var prodElem = $(this).closest('.mpp_product_tile, .quickshop_wrapper, .mpp-product');
+        var prodId = prodElem.attr('data-productid');
+
+        var $this = $(this);
+        if ($this.hasClass('swatch')) {
+          return;
+        }
+
+        if (typeof prodId !== 'undefined' && prodId !== '') {
+          site.track.productClick({
+            product_id: [prodId]
+          });
+        }
+      });
+
+      // Track Quick Shop
+      $('.quickshop-link', context).on('click', function() {
+        var obj;
+        var $targetElem = $(this);
+        var catName = $('.content > article', context).attr('trackname');
+        var prodElem = $targetElem.closest('.product');
+        var prodId = $targetElem.attr('data-productid');
+        var temp = prodElem.find('h3 span:first, .js-product-link').text() || prodElem.find('h3').text();
+        var prodName = temp ? temp.replace(/\s+/g, ' ').trim() : '';
+        var position;
+        if (window.hasOwnProperty('prodcat') && prodcat.hasOwnProperty('data') && prodcat.data.hasOwnProperty('pids')) {
+          position = self.getProductPositions([prodId]);
+        }
+        obj = {
+          event_label: prodName + ' - ' + prodId,
+          page_name: 'QV | ' + prodName,
+          product_id: [prodId],
+          product_catagory_name: [catName],
+          product_price: [prodElem.find('.price').text().replace(/\s+/g, ' ').trim()]
+        };
+        site.track.quickView(obj);
+      });
+
+      // Track Predictive Search Product Click and All Results Click
+      $('#typeahead-wrapper').on('click', '.product.row.clearfix', function() {
+        var term = $('input#edit-keywords').val();
+        var prods = $(this);
+        var obj;
+        var prodName = prods.find('.product-name a');
+        event.preventDefault();
+        self.setLinkCapture(prodName.attr('href'), '_self');
+        obj = {
+          event_label: term,
+          search_keyword: term,
+          product_id: prods.attr('data-product-id'),
+          product_name: prodName.text(),
+        };
+        site.track.evtAction('searchOneResultSelected', obj, self.linkToPage);
+      });
+
+      // Track Social Icon Links
+      $('.footer-social-links a', context).on('click', function() {
+        var $elem = $(this);
+        var href = $elem.attr('href');
+        var obj = {
+          event_action: href,
+          event_label: window.location.href
+        };
+        site.track.evtAction('socialLink', obj);
+      });
+
+      // CHECKOUT EVENTS
+      // Track guest user checkout
+      $('#checkout_signin_guest_user, #checkout_signin_new_user, #registration_short, #checkout_registration').on('submit', function() {
+        var obj = {};
+        site.track.evtAction('checkoutGuestUser', obj);
+      });
+
+      // Track return user checkout
+      var returnUsersElements = [
+        '#js_analytics_return_user_submit',
+        '#checkout-_-checkout_signin .form-submit',
+        '#checkout_signin-submit',
+        '#checkout_signin .form-submit',
+        '.js-checkout-signin .form-submit'
+      ];
+      $(document).on('click', returnUsersElements.join(', '), function() {
+        var obj = {};
+        site.track.evtAction('checkoutReturnUser', obj);
+      });
+
+      // Track Payment Method
+      var paymentElements = [
+        '#checkout_billing input#continue-checkout',
+        '#checkout_review input.place-order',
+        '#checkout_review input.form-submit',
+        '#checkout_complete .checkout-buttons',
+        '#checkout_payment input.js_analytics_payment_click',
+        '#checkout_complete input.js_analytics_payment_click',
+        '#continue-checkout-btm input#continue-to-payment-btn',
+        '.js_analytics_payment_submit',
+        '.js_analytics_checkout_payment',
+        '.js_analytics_payment_click'
+      ];
+      $(document).on('click', paymentElements.join(', '), function() {
+        var paymentLabel = '';
+        var paymentTypePP = [
+          'PayPal',
+          'PP',
+          'PAYMENT_OPTION_PAYPAL'
+        ];
+        var paymentTypeCC = [
+          'Credit Card',
+          'GMO',
+          'PP_CC',
+          'GMO',
+          'SecurePay',
+          'CC',
+          'KBank',
+          'PAYMENT_OPTION_MC',
+          'PAYMENT_OPTION_CC',
+          'PAYMENT_OPTION_AMEX',
+          'PAYMENT_OPTION_VISA'
+        ];
+        var paymentTypeCOD = [
+          'PAYMENT_OPTION_COD',
+          'PP_CASH',
+          'COD'
+        ];
+        var paymentTypeAfterPay = [
+          'AfterPay'
+        ];
+        var paymentTypeBT = [
+          'BT'
+        ];
+        var paymentType = $('input[name$=PP_NAME]:checked').val() || $('input[name$=PAYMENT_TYPE]:checked').val() || $('#form--checkout_review--field--PAYMENT_OPTION').val() || $('input[name$=Payment Method]:checked').val() || $('input[name$=Payment Type]:checked').val() || $('.payment_type option:selected').val();
+        if ($.inArray(paymentType, paymentTypePP) > -1) {
+          paymentLabel = 'paypal';
+        } else if ($.inArray(paymentType, paymentTypeCC) > -1) {
+          paymentLabel = 'creditcard';
+        } else if ($.inArray(paymentType, paymentTypeCOD) > -1) {
+          paymentLabel = 'cashondelivery';
+        } else if ($.inArray(paymentType, paymentTypeBT) > -1) {
+          paymentLabel = 'banktransfer';
+        } else if ($.inArray(paymentType, paymentTypeAfterPay) > -1) {
+          paymentLabel = 'AfterPay';
+        }
+        var obj = {
+          event_label: paymentLabel
+        };
+        site.track.evtAction('checkoutPaymentSelected', obj);
+      });
+
+      // Track Paypal Express Check-out
+      $('a.paypal-checkout').on('click', function() {
+        var obj = {
+          event_label: 'paypal'
+        };
+        site.track.evtAction('checkoutPaymentSelected', obj);
+      });
+      // END CHECKOUT EVENTS
+
+      // Advent Calendar Tagging Start
+      if ($('body').find('.js-adv-cal-cap-container').length > 0) {
+        trackAdventCalenderTagging();
+      }
+
+      function trackAdventCalenderTagging() {
+        var offerCode;
+        initCalendarTagging();
+
+        function dateClickTagging() {
+          var $activeSelector = $('.card.tile.active', context).once('js-card-active');
+          $activeSelector.on('click', function() {
+            var $prod = $(this);
+            offerCode = $prod.attr('id');
+            var eventLabel = offerCode + ' - Live';
+            trackEvent('Advent_Calendar_FY20', 'Advent Calendar FY20', 'Click', eventLabel);
+          });
+        }
+
+        function offerClickTagging() {
+          $(document).on('click', '.js-view-offer', function() {
+            var trimOfferText = $(this).text().trim();
+            var eventLabel = offerCode + ' - ' + trimOfferText;
+            trackEvent('Advent_Calendar_FY20', 'Advent Calendar FY20', 'Click', eventLabel);
+          });
+        }
+
+        function processClickTagging() {
+          $(document).on('click', '.js-video-replay, .js-apply, .btn-wrapper', function() {
+            var trimPlaceText = $(this).text().trim();
+            trackEvent('Advent_Calendar_FY20', 'Advent Calendar FY20', 'Click', trimPlaceText);
+          });
+        }
+
+        function initCalendarTagging() {
+          dateClickTagging();
+          offerClickTagging();
+          processClickTagging();
+        }
+      }
+      // Advent Calendar Tagging end
+
+      // Holiday Landing Page Tagging start
+      if ($('body').hasClass('section-sparkling-gifts') || $('body').hasClass('section-coming-soon')) {
+        trackHolidayLandingTagging();
+      }
+
+      function trackHolidayLandingTagging() {
+        $('.panel_with_image_or_color_v1', context).each(function(key) {
+          $(this).attr('data-index', key);
+        });
+
+        initHolidayTagging();
+
+        function enteredEmailTagging() {
+          $('.js-email-field', context).on('change', function() {
+            trackCommingsoonEvent('Christmas_FY18', 'Email Entered', 'Email Entered');
+          });
+        }
+
+        function signUpTagging() {
+          $('.form-item.submit-button', context).on('click', function() {
+            trackCommingsoonEvent('Christmas_FY18', 'Click', 'Sign Up');
+          });
+        }
+
+        function landingBannerTagging() {
+          $('.panel_with_image_or_color_v1.has-img', context).on('click', function() {
+            var $elem = $(this);
+            var bannerLabel = $elem.find('h2').text();
+            var bPosition = $elem.data('index');
+            trackHolidayPromotionEvent(bannerLabel, bPosition);
+            trackCommingsoonEvent('Christmas_Banners', 'Click', bannerLabel);
+          });
+        }
+
+        function trackCommingsoonEvent(category, action, label) {
+          var obj = {
+            event_name: 'Christmas',
+            event_category: category,
+            event_action: action,
+            event_label: label
+          };
+          site.track.evtLink(obj);
+        }
+
+        function trackHolidayPromotionEvent(creative, position) {
+          var obj = {
+            imp_promo_id: ['Christmas'],
+            imp_promo_name: ['Christmas_FY18'],
+            imp_promo_creative: [creative],
+            imp_promo_pos: [position + 1],
+            enh_action: 'promo_click'
+          };
+          site.track.evtLink(obj);
+        }
+
+        function initHolidayTagging() {
+          enteredEmailTagging();
+          signUpTagging();
+          landingBannerTagging();
+        }
+      }
+      // Holiday Landing Page Tagging end
+
+      // Bronze Wood and Leather Tagging
+      if ($('body').hasClass('section-bronze-wood-leather-cologne-intense')) {
+        var drupalAnalytics = Drupal.settings.analytics.tealium_profile;
+        var tealiumRegionalProfile = drupalAnalytics.match(/-us|-ca/gi);
+        if (drupalAnalytics && tealiumRegionalProfile) {
+          trackBronzeWood();
+        }
+      }
+
+      function trackBronzeWood() {
+        var obj = {};
+        var slot = 0;
+
+        initBronzeWoodtagging();
+
+        function trackVideoPlay() {
+          $('video').on('play', function() {
+            var eventDate = new Date();
+            var playTime = eventDate.getHours() + ':' + eventDate.getMinutes() + ':' + eventDate.getSeconds();
+            trackBronzeWoodEvent('Bronze Wood & Leather', 'Bronze Wood & Leather', 'play', playTime);
+          });
+        }
+
+        function trackVideoPause() {
+          $('video').on('pause', function() {
+            var videoPropery = $(this)[0];
+            if (videoPropery.currentTime !== videoPropery.duration) {
+              var eventDate = new Date();
+              var pauseTime = eventDate.getHours() + ':' + eventDate.getMinutes() + ':' + eventDate.getSeconds();
+              trackBronzeWoodEvent('Bronze Wood & Leather', 'Bronze Wood & Leather', 'pause', pauseTime);
+            }
+          });
+        }
+
+        function trackShopScent() {
+          $('.overlay_panel a', context).once('js-shopscent').on('click', function() {
+            var productHref, wordLength, productId, productName, eventLabel;
+            productHref = $(this).attr('href');
+            wordLength = productHref.split('/').length;
+            productId = 'PROD' + productHref.split('/')[3];
+            productName = productHref.split('/')[wordLength - 1];
+            eventLabel = productName + ' - ' + productId;
+            trackBronzeWoodEvent('Bronze Wood & Leather', 'Bronze Wood & Leather', 'product detail view', eventLabel);
+          });
+        }
+
+        function trackShopNow() {
+          $('.js-quickshop-link', context).once('js-quickshop').on('click', function() {
+            var $prod, productId, productName, productIdfinder, eventLabel;
+            $prod = $(this);
+            productName = $prod.siblings('h3').text();
+            productIdfinder = $prod.closest('.blossom-product-wrapper').find('.qs-pop-item');
+            productId = $(productIdfinder).find('.quickshop_wrapper').data('productid');
+            eventLabel = productName + ' - ' + productId;
+            obj.enh_action = 'detail';
+            obj.product_id = [productId];
+            trackBronzeWoodEvent('Bronze Wood & Leather', productName, 'product detail view', eventLabel);
+          });
+        }
+
+        function trackCarouselScent() {
+          $('.slick-slide', context).once('js-slide').on('click', function() {
+            var $prod, productID, productName, eventLabel, slotIndex;
+            $prod = $(this);
+            slotIndex = $prod.data('slick-index') + 1;
+            slot = slotIndex.toString();
+            productID = $prod.data('productid');
+            productName = $prod.text().trim();
+            eventLabel = productName + ' - ' + productID;
+            obj.enh_action = 'detail';
+            obj.product_id = [productID];
+            trackBronzeWoodEvent('Bronze Wood & Leather', 'Bronze Wood & Leather', 'product detail view', eventLabel);
+          });
+        }
+
+        function trackQuichShopProductClick() {
+          $(document).on('click', '.js-analytics-click,.js-analytics-title a', function() {
+            var productId, productName, productUrl, $prodSelector;
+            $prodSelector = $(this).closest('.js-quickshop_wrapper');
+            productName = $prodSelector.find('.product-title').text().trim();
+            productId = $prodSelector.data('productid');
+            productUrl = $prodSelector.find('.product-title a').attr('href');
+            obj.enh_action = 'product_click';
+            obj.product_list = [productUrl];
+            obj.product_id = [productId];
+            obj.product_position = [slot];
+            trackBronzeWoodEvent('Bronze Wood & Leather', 'Carousel Quickview - Bronze Wood & Leather', 'Product Click', productName);
+          });
+        }
+
+        function trackBronzeWoodEvent(name, category, action, label) {
+          Object.assign(obj, {
+            event_name: name,
+            event_category: category,
+            event_action: action,
+            event_label: label
+          });
+          site.track.evtLink(obj);
+          obj = {};
+        }
+
+        function initBronzeWoodtagging() {
+          trackVideoPlay();
+          trackVideoPause();
+          trackShopScent();
+          trackShopNow();
+          trackCarouselScent();
+          trackQuichShopProductClick();
+          trackBronzeWoodEvent();
+        }
+      }
+      //Bronze Wood Leather Tagging End
+
+      //Solid Cologne Palette Tagging start
+      if ($('body').hasClass('section-solid-perfume-palette') && drupalAnalyticsSettings) {
+        trackSolidPalettaTagging();
+      }
+
+      function trackSolidPalettaTagging() {
+        var obj = {};
+        var slot = 0;
+
+        initSolidPalettatagging();
+        $('.mpp_product_tile, .mpp-product', context).each(function(key) {
+          $(this).attr('id', key + 1);
+        });
+
+        function solidPalettProducts() {
+          $('.mpp_product_tile img, .mpp-product img, .at-h3 .js-product-link, .shop_now, h3.product-name', context).once('js-product-click').each(function() {
+            var $prodBlockElement = $(this);
+            $prodBlockElement.on('click', function() {
+              var $prodElement, prodID, prodURL, prodName, prodHref, prodLabel, $prodAttributesElement;
+              if (!$prodBlockElement.hasClass('disabled-product-link')) {
+                $prodElement = $prodBlockElement.closest('.mpp_product_tile, .mpp-product');
+                prodID = $prodElement.data('productid');
+                $prodAttributesElement = $prodElement.find('h3 .js-product-link');
+                prodHref = $prodElement.find('.js-quickshop').attr('href');
+                prodURL = prodHref ? prodHref : $prodAttributesElement.attr('href');
+                prodName = $prodElement.attr('aria-label');
+                prodLabel = prodName ? prodName : $prodAttributesElement.text().trim();
+                slot = $prodElement.attr('id');
+                obj.enh_action = 'product_click';
+                obj.product_list = [prodURL];
+                obj.product_id = [prodID];
+                obj.product_position = [slot];
+                trackSolidPalettaEvent('SolidPerfumes', 'SolidPerfumes', 'product Click', prodLabel);
+              }
+            });
+          });
+        }
+
+        function quickShopDetailProduct() {
+          $(document).on('click', '.js-analytics-click', function() {
+            var prodId, prodName, prodUrl, $prodSelector;
+            $prodSelector = $(this).closest('.js-quickshop_wrapper');
+            prodName = $prodSelector.find('.product-title').text().trim();
+            prodId = $prodSelector.data('productid');
+            prodUrl = $prodSelector.find('.product-title a').attr('href');
+            obj.enh_action = 'product_click';
+            obj.product_list = [prodUrl];
+            obj.product_id = [prodId];
+            obj.product_position = [slot];
+            trackSolidPalettaEvent('SolidPerfumes', 'SolidPerfumes', 'product click', prodName);
+          });
+        }
+
+        function quickShopDetail() {
+          $('a.js-product-link span.js-quickshop-link', context).once('js-quickshop').each(function() {
+            var $prodDetailElem = $(this);
+            $prodDetailElem.on('click', function() {
+              var $prodDetailSelector, prodDetailID, prodDetailName, prodLabel;
+              $prodDetailSelector = $prodDetailElem.closest('.mpp_product_tile');
+              prodDetailID = $prodDetailSelector.data('productid');
+              prodDetailName = $prodDetailSelector.attr('aria-label');
+              prodLabel = prodDetailName + '-' + prodDetailID;
+              slot = $prodDetailSelector.attr('id');
+              obj.enh_action = 'detail';
+              obj.product_id = [prodDetailID];
+              trackSolidPalettaEvent('SolidPerfumes', 'SolidPerfumes', 'product detail view', prodLabel);
+            });
+          });
+        }
+
+        function perfumeTypetagging() {
+          $(document).on('trackPerfumeType', function(event, data) {
+            var selectedPerfumeType = data;
+            $('.stay--leave__buttons a, .close-btn', context).on('click', function() {
+              var popupAction, popupLabel;
+              popupAction = $(this).text().trim();
+              popupLabel = popupAction ? popupAction : 'Close';
+              trackSolidPalettaEvent('SolidPerfumes', 'SolidPerfumes', selectedPerfumeType, popupLabel);
+            });
+          });
+        }
+
+        function trackSolidPalettaEvent(name, category, action, label) {
+          Object.assign(obj, {
+            event_name: name,
+            event_category: category,
+            event_action: action,
+            event_label: label
+          });
+          site.track.evtLink(obj);
+          obj = {};
+        }
+
+        function initSolidPalettatagging() {
+          solidPalettProducts();
+          quickShopDetailProduct();
+          quickShopDetail();
+          perfumeTypetagging();
+        }
+      }
+      //Solid Cologne Palette Tagging end
+
+      //WFW Tagging start
+      if (($('body').hasClass('section-wild-flowers-weeds-colognes') || $('body').hasClass('section-wild-flowers-weeds')) && drupalAnalyticsSettings) {
+        trackWfwTagging();
+      }
+
+      function trackWfwTagging() {
+        var obj = {};
+        var slot = 0;
+
+        initWFWtagging();
+
+        $('.mpp_product_tile', context).each(function(key) {
+          $(this).attr('id', key + 1);
+        });
+
+        function quickShopDetail() {
+          $('span.js-quickshop-link', context).once('js-quickshop').each(function() {
+            var $prodDetailElem = $(this);
+            $prodDetailElem.on('click', function() {
+              var $prodDetailSelector, prodDetailID, prodDetailName, prodLabel, prodUrl;
+              $prodDetailSelector = $prodDetailElem.closest('.mpp_product_tile');
+              prodDetailID = $prodDetailSelector.data('productid');
+              prodDetailName = $prodDetailSelector.attr('aria-label');
+              prodUrl = $prodDetailSelector.find('a.js-product-link').attr('href');
+              prodLabel = prodDetailName + ' - ' + prodDetailID;
+              slot = $prodDetailSelector.attr('id');
+              obj.enh_action = 'product_click';
+              obj.product_list = [prodUrl];
+              obj.product_id = [prodDetailID];
+              obj.product_position = [slot];
+              trackWFWEvent('Wild Flower & Weeds Product_Click', 'Wild Flower & Weeds', 'Product Click', prodDetailName);
+              obj.enh_action = 'detail';
+              obj.product_id = [prodDetailID];
+              trackWFWEvent('Wild Flower & Weeds quickshop', 'Wild Flower & Weeds', 'Product detail view', prodLabel);
+            });
+          });
+        }
+
+        function trackDiscoverSlot() {
+          $('.herb-garden-carousel-container', context).on('afterChange', function(event, slick, currentSlide) {
+            var sliderSlot = currentSlide + 1;
+            trackWFWEvent('Wild Flower & Weeds ' + sliderSlot, 'Wild Flower & Weeds', 'Click', 'Position - ' + sliderSlot);
+          });
+        }
+
+        function trackShopnow() {
+          $('.pre-launch-content .js-quickshop-link', context).once('js-shopnow').each(function() {
+            var $prodDetailElem = $(this);
+            $prodDetailElem.on('click', function() {
+              var $prodParentElem = $prodDetailElem.closest('.pre-launch-block');
+              var prodDetailId = $prodParentElem.find('.qs-pop-item .mpp-quickshop').data('pg-prod-id');
+              var prodDetailName = self.stripOutMarkup($prodDetailElem.siblings('h3').text().trim());
+              var prodLabel = prodDetailName + ' - ' + prodDetailId;
+              obj.enh_action = 'detail';
+              obj.product_id = [prodDetailId];
+              trackWFWEvent('Wild Flower & Weeds Shop Now', 'Wild Flower & Weeds', 'product detail view', prodLabel);
+            });
+          });
+        }
+
+        function trackReadmore() {
+          $('.panel_with_image_or_color_v1 p a', context).once('js-readmore').each(function() {
+            var $prodReadElem = $(this);
+            $prodReadElem.on('click', function() {
+              var prodLabel = $prodReadElem.text().trim();
+              trackWFWEvent('Wild Flower & Weeds Read Now', 'Wild Flower & Weeds', 'Click', prodLabel);
+            });
+          });
+        }
+
+        function trackWFWEvent(name, category, action, label) {
+          Object.assign(obj, {
+            event_name: name,
+            event_category: category,
+            event_action: action,
+            event_label: label
+          });
+          site.track.evtLink(obj);
+          obj = {};
+        }
+
+        function initWFWtagging() {
+          quickShopDetail();
+          trackDiscoverSlot();
+          trackShopnow();
+          trackReadmore();
+        }
+      }
+      // WFW Tagging end
+
+      // Home activation Tagging start
+      if (($('div').hasClass('js-waitlist-signup-block') || $('div').hasClass('offer-access-container') || $('div').hasClass('js-home-actiavation-room')) && drupalAnalyticsSettings) {
+        trackHomeActivationtagging();
+      }
+
+      function trackHomeActivationtagging() {
+        initHomeActivation();
+
+        function teaserPageTrack() {
+          $('.js-waitlist-submit', context).once('js-signup').each(function() {
+            var $signupElem = $(this);
+            $signupElem.on('click', function() {
+              var eventLabel = $signupElem.val();
+              var emailField = $('input[type="email"]').val();
+              if (emailField) {
+                trackEvent('HomeActivation', 'HomeActivation', 'click', eventLabel);
+              }
+            });
+          });
+        }
+
+        function termsConditionTrack() {
+          $(document).on('click', '.js-terms-conditions, .email_signup_tickbox a', function() {
+            var eventLabel = $(this).text().trim();
+            trackEvent('HomeActivation', 'HomeActivation', 'click', eventLabel);
+          });
+        }
+
+        function unLockHouseTrack() {
+          $('.offer-block .submit-button a', context).once('js-discover').each(function() {
+            var $unLockElem = $(this);
+            $unLockElem.on('click', function() {
+              var eventLabel = $unLockElem.text().trim();
+              trackEvent('HomeActivation', 'HomeActivation', 'click', eventLabel);
+            });
+          });
+        }
+
+        function ourHouseTrack() {
+          $('.home-room-card a', context).once('js-discover').each(function() {
+            var $ourHouseElem = $(this);
+            $ourHouseElem.on('click', function() {
+              var discoverName = $ourHouseElem.text().trim();
+              var roomName = $ourHouseElem.closest('.home-room-card').find('.home-room-carousel-card__title').text().trim();
+              var eventLabel = discoverName + ' - ' + roomName;
+              trackEvent('HomeActivation', 'HomeActivation', 'click', eventLabel);
+            });
+          });
+        }
+
+        function slidePositionTrack() {
+          if (/Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            $('.js-basic-carousel').on('beforeChange', function(event, slick, currentSlide, nextSlide) {
+              var direction = 'left';
+              if (currentSlide === 0 && nextSlide === slick.$slides.length - 1) {
+                direction = 'left';
+              } else if (nextSlide > currentSlide || (currentSlide === (slick.$slides.length - 1) && nextSlide === 0)) {
+                direction = 'right';
+              }
+              trackEvent('HomeActivation', 'HomeActivation', 'click - ' + direction, 'Room Discovery');
+            });
+          } else {
+            $('.slick-next, .slick-prev').on('click', function() {
+              var direction = $(this).hasClass('slick-next') ? 'right' : 'left';
+              trackEvent('HomeActivation', 'HomeActivation', 'click - ' + direction, 'Room Discovery');
+            });
+          }
+        }
+
+        function launchFlowTrack() {
+          $(document).on('click', '.js-next-room, .js-redeem-gift-button, .win-message .js-winbox-button', function() {
+            var eventLabel = $(this).text().trim();
+            trackEvent('HomeActivation', 'HomeActivation', 'Click CTA', eventLabel);
+          });
+        }
+
+        function popupCloseTrack() {
+          $(document).on('click', '.js-close', function() {
+            var $popupClose = $(this).parent();
+            var eventLabel = $popupClose.find('.js-redeem-gift-button').hasClass('hidden') ? $popupClose.find('.js-next-room').text() : $popupClose.find('.js-redeem-gift-button').text();
+            trackEvent('HomeActivation', 'HomeActivation', 'Click X', eventLabel);
+          });
+        }
+
+        function initHomeActivation() {
+          teaserPageTrack();
+          termsConditionTrack();
+          unLockHouseTrack();
+          ourHouseTrack();
+          slidePositionTrack();
+          launchFlowTrack();
+          popupCloseTrack();
+        }
+      }
+      // Home activation Tagging end
+
+      // Poppy & Barley Tagging start.
+      if ($('body').hasClass('section-poppy-and-barley') && drupalAnalyticsSettings) {
+        trackPoppyBarleyTagging();
+      }
+
+      function trackPoppyBarleyTagging() {
+        initPoppyBarleyTrack();
+        var pageHeaderName = $('.full-width-video__header').text().trim();
+
+        function trackBarleyVideo() {
+          $('video').on('play pause', function() {
+            var eventAction = event.type;
+            trackEvent(pageHeaderName, pageHeaderName, eventAction, 'P&B Video');
+          });
+        }
+
+        function trackBarleyButtons() {
+          $('.full-width-video__cta .button, .btn-primary.js-quickshop-link, a.pre-launch-nav-link, .js-eg-product-carousel .slick-prev, .js-eg-product-carousel .slick-next', context).once('js-barley').each(function() {
+            var $barleyButtonElem = $(this);
+            $barleyButtonElem.on('click', function() {
+              var eventLabel;
+              if ($barleyButtonElem.hasClass('slick-next')) {
+                eventLabel = 'Right';
+              } else if ($barleyButtonElem.hasClass('slick-prev')) {
+                eventLabel = 'Left';
+              } else {
+                eventLabel = $barleyButtonElem.text().trim();
+              }
+              trackEvent(pageHeaderName, pageHeaderName, 'Click', eventLabel);
+            });
+          });
+        }
+
+        function trackProductQuickView() {
+          $('.js-eg-product-carousel .slick-slide', context).once('js-quickView').each(function() {
+            var $quickViewElem = $(this);
+            $quickViewElem.on('click', function() {
+              var prodName = $quickViewElem.find('.product-title').text().trim();
+              var prodID = $quickViewElem.data('productid');
+              var eventLabel = prodName + ' - ' + prodID;
+              trackEvent(pageHeaderName, pageHeaderName, 'Click', eventLabel);
+            });
+          });
+        }
+
+        function trackTastingNodeScroll() {
+          $('.js-generic-content-carousel', context).on('beforeChange', function(event, slick, currentSlide, nextSlide) {
+            var direction = 'left';
+            if (currentSlide === 0 && nextSlide === slick.$slides.length - 1) {
+              direction = 'left';
+            } else if (nextSlide > currentSlide || (currentSlide === (slick.$slides.length - 1) && nextSlide === 0)) {
+              direction = 'right';
+            }
+            var eventLabel = 'P&B ' + direction;
+            trackEvent(pageHeaderName, pageHeaderName, 'Mobile Scroll', eventLabel);
+          });
+        }
+
+        function initPoppyBarleyTrack() {
+          trackBarleyVideo();
+          trackBarleyButtons();
+          trackProductQuickView();
+          trackTastingNodeScroll();
+        }
+      }
+      // Poppy & Barley Tagging end.
+
+      // Vetiver & Golden Vanilla Landing Page Tagging start.
+      if ($('body').hasClass('section-vetiver-golden-vanilla-gallery') || $('body').hasClass('section-vetiver-golden-vanilla-cologne-intense')) {
+        trackvetiverTagging();
+      }
+
+      function trackvetiverTagging() {
+        initvetiverTagging();
+
+        function trackVenillaGalleryButton() {
+          $('.full-width-pane a, .vetiver-golden-vanilla .full-width-video__cta a, .vetiver-golden-vanilla .pre-launch-nav-link', context).once('js-vetiver-gallery').each(function() {
+            var $venillaGalleryElem = $(this);
+            $venillaGalleryElem.on('click', function() {
+              var eventLabel = $venillaGalleryElem.text().trim();
+              trackEvent('VetiverGoldenVanilla', 'VetiverGoldenVanilla', 'Click', eventLabel);
+            });
+          });
+        }
+
+        function trackVenillaIntenseArrow() {
+          $('.js-eg-product-carousel').on('beforeChange', function(event, slick, currentSlide, nextSlide) {
+            var direction = 'Left';
+            if (currentSlide === 0 && nextSlide === slick.$slides.length - 1) {
+              direction = 'Left';
+            } else if (nextSlide > currentSlide || (currentSlide === (slick.$slides.length - 1) && nextSlide === 0)) {
+              direction = 'Right';
+            }
+            trackEvent('VetiverGoldenVanilla', 'VetiverGoldenVanilla', 'Click', direction);
+          });
+        }
+
+        function trackVenillaQuickView() {
+          $('.js-eg-product-carousel .slick-slide', context).once('js-venilla-quickView').each(function() {
+            var $venillaquickViewElem = $(this);
+            $venillaquickViewElem.on('click', function() {
+              var prodName = $venillaquickViewElem.find('.product-title').text().trim();
+              var prodID = $venillaquickViewElem.data('productid');
+              var eventLabel = prodName + ' - ' + prodID;
+              trackEvent('VetiverGoldenVanilla', 'VetiverGoldenVanilla', 'Click', eventLabel);
+            });
+          });
+        }
+
+        function trackVenillaVideo() {
+          $('.icon--utility-outlined-play-circle, .icon--utility-outlined-play-circle', context).once('js-venilla-video').each(function() {
+            var $venillaVideoElem = $(this);
+            $venillaVideoElem.on('click', function() {
+              var eventLabel = $venillaVideoElem.closest('.content').find('.video-1, .video-2').attr('class');
+              trackEvent('VetiverGoldenVanilla', 'VetiverGoldenVanilla', 'Play', 'V&GV ' + eventLabel);
+            });
+          });
+        }
+
+        function initvetiverTagging() {
+          trackVenillaGalleryButton();
+          trackVenillaIntenseArrow();
+          trackVenillaQuickView();
+          trackVenillaVideo();
+        }
+      }
+
+      // Vetiver & Golden Vanilla Landing Page Tagging end.
+
+      // Lavenderland Landing Page Tagging start.
+      if ($('body').hasClass('section-lavenderland') || $('body').hasClass('section-limited-edition-lavenderland-collection') && drupalAnalyticsSettings) {
+        trackLavenderTagging();
+      }
+
+      function trackLavenderTagging() {
+        initLavenderTagging();
+
+        function trackCollectionArrow() {
+          $('.js-eg-product-carousel, .js-basic-carousel').on('beforeChange', function(event, slick, currentSlide, nextSlide) {
+            var direction = 'Left';
+            if (currentSlide === 0 && nextSlide === slick.$slides.length - 1) {
+              direction = 'Left';
+            } else if (nextSlide > currentSlide || (currentSlide === (slick.$slides.length - 1) && nextSlide === 0)) {
+              direction = 'Right';
+            }
+            var eventAction = $(this).hasClass('js-basic-carousel') ? 'Fragrance notes Click' : 'Click';
+            trackEvent('Lavenderland', 'Lavenderland', eventAction, direction);
+          });
+        }
+
+        function trackLavenderQuickView() {
+          $('.js-eg-product-carousel .slick-slide', context).once('js-lavender-quickView').each(function() {
+            var $lavenderquickViewElem = $(this);
+            $lavenderquickViewElem.on('click', function() {
+              var prodName = $lavenderquickViewElem.find('.product-title').text().trim();
+              var prodID = $lavenderquickViewElem.data('productid');
+              var eventLabel = prodName + ' - ' + prodID;
+              trackEvent('Lavenderland', 'Lavenderland', 'Click', eventLabel);
+            });
+          });
+        }
+
+        function trackLavenderButton() {
+          $('.lavenderland .full-width-video__cta, .product-grid .mpp_product_tile .btn-primary', context).once('js-lavender-button-click').each(function() {
+            var $lavenderButtonElem = $(this);
+            $lavenderButtonElem.on('click', function() {
+              var eventLabel = $lavenderButtonElem.text().trim();
+              trackEvent('Lavenderland', 'Lavenderland', 'Click', eventLabel);
+            });
+          });
+        }
+
+        function trackLavenderCollection() {
+          $('.products_combiner__suggestion .js-combo-selector', context).once('js-lavender-dropdown').each(function() {
+            var $lavenderDropdownElem = $(this);
+            $lavenderDropdownElem.on('click', function() {
+              var eventLabel = $lavenderDropdownElem.text().trim();
+              trackEvent('Lavenderland', 'Lavenderland', 'Collection Change Click', eventLabel);
+            });
+          });
+        }
+
+        function initLavenderTagging() {
+          trackCollectionArrow();
+          trackLavenderQuickView();
+          trackLavenderButton();
+          trackLavenderCollection();
+        }
+      }
+      // Lavenderland Landing Page Tagging end
+
+      // Event track common function call start
+      function trackEvent(eName, eCategory, eAction, elabel) {
+        Object.assign(eventObj, {
+          event_name: eName,
+          event_category: eCategory,
+          event_action: eAction,
+          event_label: elabel
+        });
+        site.track.evtLink(eventObj);
+        eventObj = {};
+      }
+      // Event track common function call end
+
+      self.attached = 1;
+    }
+  };
+  site.elcEvents.addListener('tealium:loaded', function() {
+    Drupal.behaviors.analyticsBehavior.attachEvents(document);
+  });
+}(window.site || {}, jQuery));

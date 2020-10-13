@@ -1,0 +1,98 @@
+(function ($) {
+  "use strict";
+  /*
+  * This instantiates and runs the timed offer library script's TimedOfferPopups and TimedOfferModel classes.
+  * TimedOfferModel.setData is used to configure the offers. Pass it an object with these properties:
+  *            offers: a jQuery object representing the set of script elements that the translation set template outputs on the page. Required
+  *            cookieName: String. The name of the cookie that gets set. Optional. Defaults to "SITE-WIDE-OFFER-POPUP".
+  *            cookieValue: String. The value of the cookie. Optional. Defaults to "1".
+  *            useCookie: Boolean. A flag to indicate whether or not the cookie should be set. Optional. Defaults to true.
+  *            onlyShowOnPageLoad: Boolean. A flag to indicate whether pop up should only show on page load. Optional. Defaults to false.
+  *
+  *
+  * */
+
+  Drupal.behaviors.timedOffersPopupsV2 = Drupal.behaviors.timedOffersPopupsV2 || {};
+
+  Drupal.behaviors.timedOffersPopupsV2.disabled = false;
+
+  Drupal.behaviors.timedOffersPopupsV2.attach = function (context, settings) {
+    var offersModel, offersDisplay, preloader, useCookie, popUpCustom,
+      cookieName = 'SITE_OFFER_POPUPS',
+      container = $('body'),
+      offers = $('.timed-offer-pop-up').detach(),
+      me = this,
+      hasRun = false;
+
+    useCookie = ctrlopt.getHrefParams(location.href);
+    useCookie = (useCookie.forceoffers && (useCookie.forceoffers === '1' || useCookie.forceoffers === '1#')) ? false : true;
+    var isHomePage = (window.location.pathname === Drupal.settings.basePath) ? true : false;
+    var restrictPopupToHp = Drupal.settings.globals_variables && Drupal.settings.globals_variables.enable_only_on_hp ? isHomePage : true;
+
+    if (Drupal.behaviors.popupCustomizable && Object(Drupal.behaviors.popupCustomizable) === Drupal.behaviors.popupCustomizable) {
+      popUpCustom = Drupal.behaviors.popupCustomizable;
+      if (popUpCustom.disable && typeof popUpCustom.disable === 'function') {
+        popUpCustom.disable();
+      }
+    }
+
+    function run() {
+      function runOffers() {
+
+        if (typeof generic.cookie(cookieName) !== 'undefined' && useCookie && popUpCustom) {
+          if ((popUpCustom.enable && typeof popUpCustom.enable === 'function')) {
+            popUpCustom.enable();
+          }
+
+          if ((popUpCustom.run && typeof popUpCustom.run === 'function')) {
+            popUpCustom.run();
+          }
+        }
+
+        if (container.length && offers.length && restrictPopupToHp) {
+          offersModel = new ctrlopt.TimedOfferModel();
+          offersModel.setData({
+            offers: offers,
+            cookieName: cookieName,
+            cookieValue: '1',
+            useCookie: useCookie,
+            onlyShowOnPageLoad: false
+          });
+          offersDisplay = new ctrlopt.TimedOfferPopups(container);
+          offersDisplay.setModel(offersModel).startObserving();
+          offersModel.update();
+        }
+        hasRun = true;
+      }
+
+      if (me.disabled || hasRun) {
+        return;
+      } else {
+        if (me.preloadImages && (me.preloadImages instanceof Array || typeof me.preloadImages === 'string')) {
+          preloader = new ctrlopt.ImgPreloader({elementId: 'timed-offer-preloader'});
+          preloader.on(preloader.LOADED, function () {
+            preloader.destroy();
+            $('#timed-offer-preloader').remove();
+            preloader = null;
+            runOffers();
+          });
+          preloader.load(Drupal.behaviors.timedOffersPopupsV2.preloadImages);
+        } else {
+          runOffers();
+        }
+      }
+    }
+
+    this.run = run;
+    run();
+  };
+
+  Drupal.behaviors.timedOffersPopupsV2.disable = function() {
+    this.disabled = true;
+  };
+
+  Drupal.behaviors.timedOffersPopupsV2.enable = function() {
+    this.disabled = false;
+  };
+
+})(jQuery);

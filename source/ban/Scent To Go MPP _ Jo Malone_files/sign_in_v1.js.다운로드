@@ -1,0 +1,66 @@
+var site = site || {};
+site.account = site.account || {};
+site.signin = site.signin || {};
+
+(function ($) {
+  Drupal.behaviors.signIn = {
+    attach: function (context, settings) {
+        $('.close-button').bind('click keydown', function(e) {
+            var $gnav = $(this).parents('.js-gnav-item-v1');
+            var keyCode = e.which;
+            if (keyCode === 13 || keyCode === 1) {
+              $gnav.removeClass('hover');
+              $gnav.find('.js-gnav-item-title > a').attr('aria-expanded', 'false');
+              if($('html').hasClass('no-csstransitions')){
+                var $gnavSub = $gnav.find('.js-gnav-item-content');
+                $gnavSub.fadeOut("slow");
+              }
+              $('.js-gnav-item-v1').trigger('mouseout');
+            }
+         });
+      // Use JS to toggle body classes for pg pages
+      generic.jsonrpc.fetch({
+        "method":   "user.json",
+        "params":   [{}],
+        "onSuccess" : function(response) {
+          // set a body class attribute based on user logged in status
+          var isSignedIn = (response.getValue().signed_in === 1);
+          $('body').toggleClass( 'elc-user-state-logged-in', isSignedIn ).toggleClass( 'elc-user-state-anonymous', !isSignedIn );
+        },
+        "onFailure" : function() {}
+      });
+
+      var $signInForm = $('.perlgem-signin-block .signin-block form');
+      if ($signInForm.length !== 0) {
+        // Make sure that the form action points to the SSL version
+        if ($signInForm.attr('action').match(/^http[s]?:/)) {
+          // form may already have absolute url (with locale prefixes if this is a hub site), just make sure it's https
+          $signInForm.attr('action', $signInForm.attr('action').replace('http:', 'https:'));
+        } else {
+          // default behaviour: assume form should point to /account/signin.tmpl and prepend https:// and hostname
+          $signInForm.attr('action', 'https://' + window.location.hostname + '/account/signin.tmpl');
+        }
+      }
+
+      site.account.signinEmailInput = $('input[name="EMAIL_ADDRESS"]', $signInForm);
+      //site.signin.forgotPassword({
+        //resetPassword: true,
+        //emailNode: site.account.signinEmailInput,
+        ////forgotPasswordLink: $('a.fpw-link', $signInForm),
+        //errorListNode: $('.fpw-note', $signInForm),
+        //forgotPasswordNote: $('.fpw-text', $signInForm)
+      //});
+    }
+  };
+  var $resetPassLink = $('#perlgem-sign-in-form a.fpw-link');
+  $resetPassLink.bind('click', function(evt) {
+    evt.preventDefault();
+    var $GnavSignInEmailInput = $('#perlgem-sign-in-form input[name="EMAIL_ADDRESS"]');
+    var email = site.signin.getEmailAddress($GnavSignInEmailInput);
+    if (!email) {
+      $('#email').addClass('error');
+      return false;
+    }
+    site.signin.requestPassword(email);
+  });
+})(jQuery);

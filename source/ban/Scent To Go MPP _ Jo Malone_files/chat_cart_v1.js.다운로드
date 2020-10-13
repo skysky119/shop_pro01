@@ -1,0 +1,62 @@
+var ELC = ELC || {};
+
+(function($) {
+
+  ELC.cartItems = {};
+
+  ELC.cartItems.init = function () {
+    ELC.cartItems.labels = ELC.cartItems.labels || ELC.cartItems.getLabels();
+    ELC.cartItems.updateCart();
+    ELC.cartItems.watchCart();
+  };
+
+  // grab the label string, parse it into a usable structure
+  ELC.cartItems.getLabels = function() {
+    var labels = $('.chat-cart-items-text').html();
+      if(labels != null){
+          var labelsComponents = labels.split("\n"),
+          labelsLength = labelsComponents.length,
+          labelsValues;
+      }
+      // reuse the labels variable
+      labels = [];
+      for (var i = 0; i < labelsLength; i++) {
+        labelsValues = labelsComponents[i].split(',');
+        labels.push({
+          label: labelsValues[0],
+          min: labelsValues[1] ? labelsValues[1] : Number.MIN_VALUE,
+          max: labelsValues[2] ? labelsValues[2] : Number.MAX_VALUE
+        });
+      }
+      return labels;
+  };
+
+  // given an itemCount, find and return the appropriate label
+  ELC.cartItems.findLabel = function(itemCount) {
+    itemCount = itemCount ? itemCount : parseInt($('.chat-cart-item-count').html(), 10);
+    if (!isNaN(itemCount) && ELC.cartItems.labels.length) {
+      for (var i = 0; i < ELC.cartItems.labels.length; i++) {
+        if (itemCount >= ELC.cartItems.labels[i].min && itemCount <= ELC.cartItems.labels[i].max) {
+          return ELC.cartItems.labels[i].label;
+        }
+      }
+    }
+    return null;
+  };
+
+  ELC.cartItems.updateCart = function() {
+    $('.chat-cart-items-text').html(ELC.cartItems.findLabel()).addClass('active');
+  };
+
+  // attach a handler to the item count to update the cart upon cart.update event
+  ELC.cartItems.watchCart = function() {
+    $(document).bind('cart.updated inline_data.loaded', function(event) {
+      ELC.cartItems.updateCart();
+    });
+  };
+
+  ELC.cartItems.init();
+
+})(jQuery);
+
+

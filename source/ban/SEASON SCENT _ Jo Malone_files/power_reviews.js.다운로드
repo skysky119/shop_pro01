@@ -1,0 +1,165 @@
+var site = site || {};
+var prodcat = prodcat || {};
+prodcat.data = prodcat.data || {};
+var POWERREVIEWS = POWERREVIEWS || '';
+
+(function($) {
+  var pr_products = [];
+  // Set up PowerReviews data on product.init
+  $(document).on('product.init', '.js-product', function() {
+    if (typeof POWERREVIEWS != 'undefined' && typeof Drupal.settings.power_reviews != 'undefined') {
+      var PROD_ID = $(this).data('productid');
+      if (PROD_ID) {
+        var PROD_BASE_VAL = PROD_ID.replace(/\D/g, '');
+
+        var reviewsnippet_id = 'pr-reviewsnippet-' + PROD_BASE_VAL + '-' + (new Date()).getTime();
+        var $reviewsnippet = $('.review-snippet', this);
+        $reviewsnippet.attr('id', reviewsnippet_id);
+
+        if (PROD_BASE_VAL && $reviewsnippet.length && !$reviewsnippet.hasClass('reviews-processed')) {
+          $reviewsnippet.addClass('reviews-processed');
+
+          var page_id = Drupal.settings.power_reviews.page_id || PROD_BASE_VAL;
+          var review_wrapper_url = (Drupal.settings.power_reviews.review_wrapper_url || '/review/create') + '?page_id=' + page_id;
+
+          var pr_product = {
+            api_key: Drupal.settings.power_reviews.api_key,
+            locale: Drupal.settings.power_reviews.locale,
+            merchant_group_id: Drupal.settings.power_reviews.merchant_group_id,
+            merchant_id: Drupal.settings.power_reviews.merchant_id,
+            page_id: page_id,
+            review_wrapper_url: review_wrapper_url,
+            components: {
+            }
+          };
+
+          if ($(this).hasClass('spp-hero')) {
+            pr_product.on_read_reviews_click = function() {
+              $('.js-pr-rating-tab', $('.responsive-tabs--powerreviews')).click();
+              $('html, body').animate({
+                'scrollTop': $('#pr-reviewdisplay').offset().top - 175
+              }, 1000);
+              if (typeof site !== 'undefined' && typeof site.track !== 'undefined') {
+                site.track.reviewRead();
+              }
+            };
+            pr_product.on_write_review_click = function(config, data) {
+              if (typeof site !== 'undefined' && typeof site.track !== 'undefined') {
+                site.track.reviewWriteStart();
+              }
+              var war_link = $('.pr-snippet-write-review-link').attr('href');
+              if (typeof war_link !== 'undefined' && war_link !== '') {
+                window.location.href = war_link;
+              }
+            };
+            pr_product.components.ReviewDisplay = 'pr-reviewdisplay';
+            pr_product.components.ReviewSnippet = reviewsnippet_id;
+            pr_product.on_render = function(config, data) {
+            };
+            if (page_data && typeof page_data.catalog.spp === 'object') {
+              var collectionData = page_data.catalog.spp.rpcdata.products[0];
+              var image_url = typeof collectionData.LARGE_IMAGE == 'object' ? encodeURI(collectionData.LARGE_IMAGE[0]) : encodeURI(collectionData.LARGE_IMAGE);
+              var url = encodeURI(collectionData.url);
+              pr_product.product = {
+                name: collectionData.PROD_RGN_NAME,
+                url: 'http://' + document.location.hostname + url,
+                image_url: 'http://' + document.location.hostname + image_url,
+                description: strip_html_tags(collectionData.DESCRIPTION),
+                category_name: collectionData.DEFAULT_CAT_ID,
+                upc: collectionData.skus[0].UPC_CODE,
+                brand_name: 'Jo Malone',
+                price: collectionData.skus[0].PRICE,
+                in_stock: collectionData.skus[0].isShoppable ? true : false
+              };
+            }
+          } else {
+            pr_product.components.CategorySnippet = reviewsnippet_id;
+          }
+
+          pr_products.push(pr_product);
+        }
+      }
+    }
+  });
+
+  $(document).ready(function() {
+    var drupalPRSettings = Drupal.settings.analytics ? Drupal.settings.analytics.power_reviews_enh_enabled : false;
+
+    // MTA-216 Track sort option in reviews page
+    $(document).on('change', '#pr-rd-sort-by', function() {
+      if (typeof site !== 'undefined' && typeof site.track !== 'undefined' && drupalPRSettings) {
+        var obj = {
+          sort_option: $('option:selected', this).text()
+        };
+        site.track.sortReviews(obj);
+      }
+    });
+
+    // MTA-216 Track thumbs up rating for a review
+    $(document).on('click', '.pr-helpful-yes', function() {
+      if (typeof site !== 'undefined' && typeof site.track !== 'undefined' && drupalPRSettings) {
+        var obj = {
+          event_action: 'thumbs up'
+        };
+        site.track.rateReviews(obj);
+      }
+    });
+
+    // MTA-216 Track thumbs down  rating for a review
+    $(document).on('click', '.pr-helpful-no', function() {
+      if (typeof site !== 'undefined' && typeof site.track !== 'undefined' && drupalPRSettings) {
+        var obj = {
+          event_action: 'thumbs down'
+        };
+        site.track.rateReviews(obj);
+      }
+    });
+
+    // MTA-216 Track flagging reviews in review page
+    $(document).on('click', '.pr-rd-flag-review-container', function() {
+      if (typeof site !== 'undefined' && typeof site.track !== 'undefined' && drupalPRSettings) {
+        var flagName = $(this).text().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        var flagTranslatedNames = [
+          'Flag this review',
+          'Denunciar esta avaliacao',
+          'Report this review'
+        ];
+        if ($.inArray(flagName, flagTranslatedNames) > -1) {
+          var obj = {
+            event_action: 'flag this review'
+          };
+          site.track.rateReviews(obj);
+        }
+      }
+    });
+  });
+
+  // Render power reviews after products have been initialized
+  $(document).on('products.init-start', function() {
+    pr_products = [];
+  });
+
+  // Render power reviews after products have been initialized
+  $(document).on('products.init-finish', function() {
+    if (typeof POWERREVIEWS != 'undefined' && typeof Drupal.settings.power_reviews != 'undefined' && pr_products.length !== 0) {
+      POWERREVIEWS.display.render(pr_products);
+    }
+  });
+
+  function strip_html_tags(str) {
+    if ((str === null) || (str === '')) {
+      return false;
+    } else {
+      str = str.toString();
+      return str.replace(/<[^>]*>/g, '');
+    }
+  }
+
+  Drupal.behaviors.powerReviews = {
+    attach: function(context) {
+      $(context).trigger('products.init-start');
+      $('.js-product', context).trigger('product.init');
+      $(context).trigger('products.init-finish');
+    }
+  };
+})(jQuery);

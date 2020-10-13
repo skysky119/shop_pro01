@@ -1,0 +1,434 @@
+var generic = generic || {};
+
+/**
+ * Jquery Memo : #foreground-node and #background-node are the valid dom id's
+ * to control for these 2 major parts of the overlay, as alternatives that
+ * use Jquery style selectors for node control, instead of the actual POJsO object.
+**/
+
+/**
+ * @class brx.overlay This singleton class offers pop-over display functionality.
+ * It supports one visible window at a time.
+ */
+generic.isMobile = function (){
+  var ua = navigator.userAgent.toLowerCase();
+  return (
+    //Detect iPhone
+    (navigator.platform.indexOf("iPhone") != -1) ||
+    //Detect iPod
+    (navigator.platform.indexOf("iPod") != -1) ||
+    //Detect iPad
+    (navigator.platform.indexOf("iPad") != -1) ||
+    //Detect android
+    (ua.indexOf("Android") > -1) ||
+    //Detect android2
+    (ua.indexOf("Android2") > -1) ||
+    //Dectect android4
+    (ua.indexOf("Android4") > -1)
+  );
+}
+ 
+generic.overlay = function() {
+    
+	var isVisible = false;
+    
+	var isCentered = true;
+	var backgroundNode = null;
+	var foregroundNode = null;
+    
+	var containerNode = null;
+    
+	var anchorNode = null;
+    
+	var offsetLeft = 0;
+  var offsetTop = 0;
+    
+    
+
+	/*** Interactive Event Handlers *******************************************/
+
+  var clickHandler = function(e) {
+
+    var loc = $(foregroundNode).offset();
+    var size = {
+      width: $(foregroundNode).width(),
+      height: $(foregroundNode).height()
+    }
+      
+    var clickLocX = e.pageX;
+    var clickLocY = e.pageY;
+      
+    // boxed conditions
+    var isClicked = ( loc.left < clickLocX ) &&
+                    ( clickLocX < (loc.left + size.width) ) &&
+                    ( loc.top < clickLocY ) &&
+                    ( clickLocY < (loc.top + size.height) )
+                    ;
+    if (!isClicked) {
+        overlay.hide();
+    }
+  }
+	 
+  var scrollHandler = function() {
+    
+		// foreground
+    if (isCentered) {
+      centerElement(foregroundNode);
+    } else if (anchorNode) {
+      $(foregroundNode).offset( $(anchorNode).offset() );
+    }
+
+    // background
+    if (backgroundNode) {
+      scaleElementToPage(backgroundNode);
+    }
+		
+  };
+
+	/*** DOM Element Visual Controls ********************************/
+	
+  var scaleElementToPage = function(ele) {
+
+    ele.css({
+      height: $(document).height()+'px',
+      width: $(window).width()+'px'
+    });
+
+  };
+
+  var centerElement = function(ele) {
+    var windowScrollOffsets = {
+      top : $(window).scrollTop(),
+      left : $(window).scrollLeft()
+    }
+    var windowDimensions = {
+      height: $(window).height(),
+      width: $(window).width()
+    }
+
+    var contentDimensions = {
+      width: $(ele).width(),
+      height: $(ele).height()
+    }
+
+    var xPosition, yPosition;
+    
+    if(windowDimensions.height < contentDimensions.height) {
+      yPosition = 0;
+    } else {
+      yPosition = (windowDimensions.height/2) - (contentDimensions.height/2) + (windowScrollOffsets.top);
+    }
+    xPosition = (windowDimensions.width/2) - (contentDimensions.width/2) + (windowScrollOffsets.left);
+        
+    if(generic.isMobile()){
+      $(ele).css("top", (yPosition + 'px'));
+      ixPosition = (windowDimensions.width / 2) - (contentDimensions.width / 2);
+      $(ele).css("left", (ixPosition + 'px'));
+    }
+    else {
+      $(ele).css("top", (yPosition + 'px'));
+      var overlayLeft = 0;
+      if ($('body').width() > $(ele).innerWidth()) {
+        overlayLeft = ($('body').width() - $(ele).innerWidth() )/2;
+      }
+      $(ele).css("margin-left", (overlayLeft) + 'px');
+     }
+  };
+	
+	/*** Operational Callbacks *******************************************/
+  var hideSelects = function () {
+		
+    $("select").each(function(){
+      $(this).addClass("overlay-hidden");
+    });
+
+  };	
+		
+	var restoreSelects = function() {
+		
+    $("select.overlay-hidden").each( function(node) {
+      $(this).removeClass("overlay-hidden");
+    });
+
+  }; 
+	
+	var insertCloseLink = function(containerEle) {
+		
+		var closeLink = $("<a class='close-link'>"+generic.rb.language.rb_close+"</a>");
+		var closeLinkWithContainer = $("<div class='close-container' />").html(closeLink);
+		
+		$(foregroundNode).html(	closeLinkWithContainer );
+		$(".close-link").click(function(closeLinkEvent){ 
+			closeLinkEvent.preventDefault();
+			generic.overlay.hide(); 
+		}); 
+    };
+	
+    return {
+       
+	/**
+	*
+	*
+	* @param lockPosition is true then pass in "lockToDomNode" as the anchor node, and
+	* explicitly set "center" to false.
+	*
+	* @param anchorAdjust.left, anchorAdjust.top can be used as negative adjustments 
+	* when using lockToDomNode is relevant
+	*
+	**/
+        launch : function(args) { 
+	    var overlay = this; // internal ref
+        var options = {
+            center: true,
+            hideOnClickOutside : false,
+            includeBackground : true,
+            includeCloseLink : true
+        }
+        $.extend(options, args);
+           
+		/* -- args example --
+		 content: htmlNode,
+		 cssStyle: {
+			 border: '#000000 1px solid',
+			 backgroundColor: '#ffffff',
+			 left: "100px",
+			 top: "350px",
+			 width: "250px",
+			 height: "350px"
+		 },
+		 cssClass: 'product-overlay',
+		 lockPosition: true,
+		 includeBackground: false
+		 */
+            if (isVisible) { // check internal flag
+                overlay.hide(); // this = generic.overlay
+            }
+            if (!containerNode) { 
+		    containerNode = $(document.body);
+            }
+            
+            if (options.includeBackground) {
+                if (!backgroundNode) { // create background node, if necessary
+			backgroundNode = $("<div class='overlay-background' id='overlay-background' />");
+                    $(containerNode).append(backgroundNode); // works
+
+                }
+	        $(backgroundNode).css('display','block');
+                scaleElementToPage(backgroundNode); // private var function
+                
+				if (options.backgroundNodeClickHide) {
+					$(backgroundNode).click(function() {
+						overlay.hide();
+					});
+				} 
+				// orig was at the end
+				// but should derive its behavior from includeBackground
+/* use backgroundNode to handle clicks */				
+//				else { $(backgroundNode).click(clickHandler); }
+				
+            }
+            
+            if (!foregroundNode) { 
+		        foregroundNode = $("<div />").attr('id','foreground-node').addClass('overlay-container pc_and_mob');
+		        $(containerNode).prepend(foregroundNode);
+            }
+
+            hideSelects();
+
+            if (options.cssStyle) {
+        		$(foregroundNode).css(options.cssStyle);
+        		/*  -- example --
+        		 cssStyle: {
+        		 border: '#000000 1px solid',
+        		 backgroundColor: '#ffffff',
+        		 left: "100px",
+        		 top: "350px",
+        		 width: "500px",
+        		 height: "350px"
+        		 },
+        		*/
+        		if(generic.isMobile()){
+        		    $(foregroundNode).css('height','auto');
+    		    }
+            }
+            if (options.cssClass) {
+	            $(foregroundNode).addClass(options.cssClass);
+            }
+			
+			if (options.includeCloseLink) {
+				
+				// check in the foregroundNode
+				var closeLinks = $(".close-link",foregroundNode); // $A
+				closeLinks = $(closeLinks).toArray();
+
+				// look for a close link
+				if ($(closeLinks).length < 1) {
+					// insert link if one is not found	
+					insertCloseLink(foregroundNode); 
+
+				}
+			}
+            
+		isVisible = true; // set internal flag
+
+		if(!options.lockPosition) {
+		    //resize does not support document
+			//$(document).resize(scrollHandler);
+			//disable handlers for ipad
+            if(generic.isMobile()){
+                //do nothing
+            }else{
+                $(window).resize(scrollHandler);
+                $(window).scroll(scrollHandler);
+            }
+		}
+
+		if($(options.lockToDomNode).length>0) {
+                if (options.offsetLeft) {
+                    offsetLeft = options.offsetLeft;
+                } else {
+                    offsetLeft = 0;
+                }
+                if (options.offsetTop) {
+                    offsetTop = options.offsetTop;
+                } else {
+                    offsetTop = 0;
+                }
+                anchorNode = $(options.lockToDomNode);
+		$(foregroundNode).offset( $(anchorNode).offset() );
+		
+		if(options.anchorAdjust) { 
+		    $(foregroundNode).css({ 
+			"margin-top" : options.anchorAdjust.top, 
+			"margin-left" : options.anchorAdjust.left 
+		    }); 
+		}
+
+            } else {
+                anchorNode = null;
+            }
+
+            $(foregroundNode).append( options.content ).css("display","block");
+
+            // adjust only after visible
+            isCentered = options.center; 
+            if (isCentered) { centerElement(foregroundNode); }
+
+        },
+        /**
+         * This function "closes" the pop-over window. It completely removes
+         * the foreground node and its children from the DOM. The background
+         * element is set to display: none.
+         */
+        hide: function(args) {
+
+			isVisible = false; // set internal flag
+             		// remove events for scroll & resize
+			//$(document).unbind('resize',scrollHandler);
+			$(window).unbind('resize',scrollHandler);
+			$(window).unbind('scroll',scrollHandler);
+			//$(document.body).unbind('click',clickHandler); //need for hard background node
+
+            restoreSelects();
+            // clean up DOM and layout
+			if($(foregroundNode).length>0) {
+                            if(args && args.hideForegroundNode) {
+                                foregroundNode.hide();
+                            } else {
+				$('#foreground-node').each(function(){ $(this).remove() });
+				foregroundNode = null;
+           	
+                		//$('.overlay-container').each(function(){ $(this).remove(); foregroundNode = null; });
+                            }
+			}
+
+
+			if($(backgroundNode).length>0) {
+				$(backgroundNode).css('display','none');
+			}
+
+        },
+        initLinks: function() {
+
+            var linksToModify = $("a.overlay-link");
+			
+			$(linksToModify).each( function() {
+
+				var jqNode = $(this);
+				
+                if (jqNode.hasClass("overlay-ready")) {
+                    return;
+                }
+				var styleObj = {};
+				var linkClassNames = $(this).attr("class"); //.split(' ');
+			
+                var cssClass = "";
+                var widthRegexResults = linkClassNames.match(/overlay-width-(\d+)/);
+                if (widthRegexResults) {
+                    styleObj.width = widthRegexResults[1] + "px";
+                }
+                var heightRegexResults = linkClassNames.match(/overlay-height-(\d+)/);
+                if (heightRegexResults) {
+                    styleObj.height = heightRegexResults[1] + "px";
+                }
+                var cssClassRegexResults = linkClassNames.match(/overlay-addclass-([a-z\-\_]+)/);
+                if (cssClassRegexResults) {
+                    cssClass = cssClassRegexResults[1];
+                }
+
+			var containerDiv = $('<div />').addClass('overlay-content');
+			$(containerDiv).css("display","none");
+				
+			$(document.body).append(containerDiv);
+                	$(containerDiv).addClass("overlay-content-container");
+
+				var href = jqNode.attr('href');
+				
+				$.ajax({
+					url:href + "?overlay_link=1",
+                    success: function(data) {
+                        var response = data || "no response text";
+						$(containerDiv).html(response);
+                    },
+                    error: function(data){
+                        var errMsg = "Error loading " + href;
+                        $(containerDiv).html(errMsg);
+                    }
+				});
+
+                $(this).click(function(clickEvt) {
+                    clickEvt.preventDefault();
+                    //$(containerDiv).css("display","block");
+                    generic.overlay.launch({
+                        url: href,
+                        content: $(containerDiv).html(),
+                        includeBackground: true,
+                        cssStyle: styleObj,
+                        cssClass: cssClass //, lockToDomNode: $("#locked")
+                    });
+                });
+                $(this).addClass("overlay-ready");
+
+			}); // end linksToModify.each()
+					
+        },
+        getRBKeys: function() {
+			
+            generic.rb.language = generic.rb("language");
+            generic.rb.language.rb_close = generic.rb.language.get('close');
+			
+        }
+    };
+}();
+
+$(document).ready(function(){
+    generic.overlay.getRBKeys();
+    generic.overlay.initLinks();
+    // These two lines fix the missing favicon in firefox. It's a hacky workaround for a known firefox bug
+    if(navigator.userAgent.toLowerCase().indexOf('firefox') > -1) {
+        var link = $('link[rel="shortcut icon"]').remove().attr("href");
+        $('<link href="'+ link +'" rel="shortcut icon" type="image/x-icon" />').appendTo('head');
+    }
+});
+
+

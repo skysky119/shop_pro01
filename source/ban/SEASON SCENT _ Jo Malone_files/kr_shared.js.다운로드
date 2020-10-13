@@ -1,0 +1,171 @@
+/* KR - DESKTOP + MOBILE SHARED JS */
+
+var site = site || {};
+
+/* MODAL */
+site.modal = {
+  getNode: function(id) {
+    return $('#' + id);
+  },
+  build: function(id) {
+    this.modal = this.getNode(id);
+    if(!this.modal.length) {
+      var thisModal = this;
+      this.modal = $('<div>').attr('id', id);
+      this.modal.bind('modal:open', function(context) {
+            thisModal.onOpen(thisModal, context);
+      });
+      this.modal.bind('modal:close', this.onClose);
+      $('body').append(this.modal);
+    }
+  },
+  create: function(id, html, options) {
+    this.build(id);
+    if(this.modal.length) {
+      var defaults = {zIndex: 300};
+      var html = $('<div>').addClass('modal-wrapper').html(html);
+      this.modal.html(html);
+      this.render(this.modal, $.extend(defaults, options));
+    }
+  },
+  createForm: function(id, html, options) {
+    this.create(id, html, options);
+    if(this.modal.length) {
+      var modal = this.modal;
+      $('form', this.modal).modalform({
+        container: $('.modal-wrapper', this.modal),
+        rpcFailure: function() {
+          modal.trigger('resize');
+        }
+      });
+    }
+  },
+  render: function(modal, options) {
+      if(modal.modal) modal.modal(options);
+  },
+  close: function(id) {
+    if(this.modal.length) this.modal.close();
+  },
+  resize: function(id) {
+    if(this.modal.length) this.modal.resize();
+  },
+  onOpen: function(thisModal, context) {
+    $(window).bind('resize.' + context.target.id, function(evt) {
+      thisModal.onResize(evt);
+    }).trigger('resize');
+  },
+  onClose: function(context) {
+     $(window).unbind('resize.' + context.target.id);
+  },
+  onResize: function(evt) {
+        var n = this.modal;
+        if(n.outerWidth() > $(window).width() || n.outerHeight() > $(window).height()) {
+        var pos = n.offset();
+        n.css({
+        'position': 'absolute',
+        'margin-top': '0px',
+        'margin-left': '0px',
+        'top': pos.top + 'px',
+        'left': pos.left + 'px'
+        });
+      }
+      else {
+          $.modal.resize();
+    }
+  }
+};
+
+
+/* MPP */
+
+if(site.mpp) {
+
+  // explicly override refreshSkuStatus
+  if('refreshSkuStatus' in site.mpp) {
+    site.mpp.refreshSkuStatus = function(l2_prod_arr) {
+      $(".mpp_product_tile[data-productid]").each(function(i, prod_div) {
+        var prod_id = $(prod_div).attr('data-productid');
+        var prod_display = false;
+        // does the product have any displayable skus?
+                $(l2_prod_arr).each(function(index, prod) {
+                    if(prod.PRODUCT_ID === prod_id) {
+                        $(prod.skus).each(function() {
+            if(this.INVENTORY_STATUS == 1 || this.INVENTORY_STATUS == 2 || this.INVENTORY_STATUS == 3) {
+              prod_display = true;
+            }                        });
+                    }
+                });
+                if(!prod_display) {
+                    $(prod_div).remove();
+        }
+      });
+      // after purging non-displayable products, do we have empty sections?
+      $('section.product-pane').each(function(i, section){
+        var mpp_product = $(section).find('.mpp_product_tile[data-productid]').length || $(section).find('.mpp_product_tile[data-product-id]').length;
+        if (mpp_product === 0) {
+          $(section).remove();
+        }
+      });
+    }
+  }
+
+  site.mpp.canDisplaySku = function(skuData) {
+    var canDisplay = false;
+    if(skuData.INVENTORY_STATUS) {
+      canDisplay = (skuData.isOrderable || skuData.INVENTORY_STATUS == 2 || skuData.INVENTORY_STATUS == 3 )
+    }
+    return canDisplay;
+  }
+
+}
+
+
+/* JQUERY */
+
+(function($) {
+
+// local classes, help in the CSS war effort
+  $('html').addClass('en en-gb');
+
+/* DOCUMENT READY */
+  $(function() {
+
+    // placeholder polyfill
+    var placeholder_native_support = !!("placeholder" in document.createElement('input'));
+    if(!placeholder_native_support) {
+      $('form').each(function() {
+        var xform = $(this);
+        xform.bind('submit', function() {
+          $('input.placeholder').val('');
+        });
+        $('input', xform).filter(":visible").each(function() {
+          var label = $(this).attr('placeholder');
+          if(label) {
+            $(this).bind('placeholder-apply', function() {
+              if(!$(this).val()) {
+                $(this).val(label).addClass('placeholder');
+              }
+            });
+            $(this).bind('focus', function() {
+              if($(this).hasClass('placeholder')) {
+                $(this).val('');
+              }
+            }).bind('change', function() {
+              $(this).removeClass('placeholder');
+            }).bind('blur', function() {
+              $(this).trigger('placeholder-apply');
+            }).trigger('placeholder-apply');
+          }
+        });
+      });
+    }
+
+    //hide the main nav when click on a link, fix bug 188941
+    $('.main-nav-wrapper-v1').children('ul.menu').children('li').find('.drop-down').find('a').click(function(){
+      $('.main-nav-wrapper-v1').children('ul.menu').children('li').find('.drop-down').hide();
+    });
+
+  })
+
+})(jQuery);
+

@@ -1,0 +1,61 @@
+var add_to_bag_rb = generic.rb("language").get("add_to_bag");
+
+if(page_data) {
+  if(typeof page_data.catalog.spp === 'object') {
+    var collectionData = page_data.catalog.spp.rpcdata.products[0].collection;
+    if (collectionData) {
+      if (collectionData.products && collectionData.products instanceof Array && collectionData.products.length) {
+        $.each(collectionData.products, function(i, v) {
+          if(typeof this['SUB_LINE'] !== 'undefined' && this['SUB_LINE'] !== null)
+            page_data.catalog.spp.rpcdata.products[0].collection.products[i]['PROD_RGN_NAME'] = '<span>'+this['SUB_LINE']+'</span><br/><span lang="en_kr">'+this['PROD_RGN_NAME']+'</span>';
+            // Disabled formattedUnitPrice display SPP
+            $.each(collectionData.products[i].skus, function(j, w) {
+              page_data.catalog.spp.rpcdata.products[0].collection.products[i].skus[j]['formattedUnitPrice'] = '';
+            });
+
+        });
+      }
+    }
+    // subline handling for oak landing
+    if (window.on_oak_landing) {
+      $.each(page_data.catalog.spp.rpcdata.products, function(i, v) {
+        if(typeof v['SUB_LINE'] !== 'undefined' && v['SUB_LINE'] !== null)
+          page_data.catalog.spp.rpcdata.products[i]['PROD_RGN_NAME'] = '<span>'+v['SUB_LINE']+'</span><br/><span lang="en_kr">'+v['PROD_RGN_NAME']+'</span>';
+          page_data.catalog.spp.rpcdata.products[i]['SUB_LINE'] = '';
+          // Note the oak-landing was imported with product name in  PROD_RGN_SUBHEADING
+          // in lieu of fixing this in .net. we're just removing it here for
+          // now
+          page_data.catalog.spp.rpcdata.products[i]['PROD_RGN_SUBHEADING'] = null;
+          $.each(page_data.catalog.spp.rpcdata.products[i].skus, function(j, w) {
+            page_data.catalog.spp.rpcdata.products[i].skus[j]['formattedUnitPrice'] = '';
+          });
+      })
+    }
+  }
+  if(typeof page_data.catalog.mpp === 'object') {
+    var collectionData = page_data.catalog.mpp.rpcdata;
+    if (collectionData.categories && collectionData.categories instanceof Array && collectionData.categories.length) {
+      $.each(collectionData.categories, function(i, v) {
+        $.each(collectionData.categories[i].products, function(j, w) {
+          if(typeof this['SUB_LINE'] !== 'undefined' && this['SUB_LINE'] !== null){
+            var prod_id = this['PRODUCT_ID'];
+            var prod_name = '<span>'+this['SUB_LINE']+'</span><br/><span lang="en_kr">'+this['PROD_RGN_NAME']+'</span>';
+            page_data.catalog.mpp.rpcdata.categories[i].products[j]['PROD_RGN_NAME'] = prod_name;
+            $.each($('.mpp_product_tile'),function(k,x){
+              if($(x).attr('data-productid') == prod_id) {
+                $('.mpp_product_tile').find('img')[k].alt = prod_name;
+                $(x).find('h3 a').html(prod_name)[k];
+                $(x).find('.add-to-cart').html(add_to_bag_rb)[k];
+                return;
+              }
+            });
+          // Disabled formattedUnitPrice display - MPP
+          $.each(collectionData.categories[i].products[j].skus, function(k, w) {
+            page_data.catalog.mpp.rpcdata.categories[i].products[j].skus[k]['formattedUnitPrice'] = '';
+          });
+          }
+        });
+      });
+    }
+  }
+}

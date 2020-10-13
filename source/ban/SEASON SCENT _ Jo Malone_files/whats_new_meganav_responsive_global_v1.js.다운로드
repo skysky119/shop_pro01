@@ -1,0 +1,19 @@
+(function($) {
+  Drupal.behaviors.whatsNewMeganavFormatterV1 = {
+    attach: function(context) {
+      var $template = $('.js-whats-new-meganav-formatter-v1', context);
+      $template.each(function() {
+        var $self = $(this);
+        var $carousel = $self.find('.js-whats-new-meganav-slider');
+        var settings = {
+          arrows: true,
+          infinite: false,
+          slidesToShow: 3,
+          slidesToScroll: 1,
+          variableWidth: true,
+        };
+        $carousel.slick(settings);
+      });
+    }
+  };
+})(jQuery);

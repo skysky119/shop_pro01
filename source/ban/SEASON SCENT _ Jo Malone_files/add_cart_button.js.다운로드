@@ -1,0 +1,274 @@
+var site = site || {};
+var generic = generic || {};
+
+site.addToCart = function(args) {
+    var skuBaseId;
+    if (args.skuData && args.skuData.SKU_BASE_ID) {
+        skuBaseId = args.skuData.SKU_BASE_ID;
+    } else if (args.skuBaseId) {
+        skuBaseId = args.skuBaseId;
+    } else {
+        return null;
+    }
+
+    var catBaseId = '';
+    if (args.skuData && args.skuData.PARENT_CAT_ID) {
+        var matchResult = args.skuData.PARENT_CAT_ID.match("[0-9]+");
+        if (matchResult) {
+            cat_base_id = matchResult[0];
+        }
+    }
+
+    var params = {
+        skus: [skuBaseId],
+        itemType: 'cart',
+        INCREMENT: 1,
+        CAT_BASE_ID: catBaseId
+    };
+
+    generic.checkout.cart.updateCart({
+        params: params,
+        onSuccess: function(r) {
+            // // Report product view based on either loctmpl attribute (if it exists) or last QV location.
+            // // Call with URL_CLICK 0 to unset location override. We only neeed it for for add to cart.
+            // // This seems kind of horrible to me.
+            // if ( typeof Analytics =='object' ){
+            //     var locType = $(thisButton).attr("loctmpl");
+            //     var params = {};
+            //     if (locType) {
+            //         location_params = locType.split(",");
+            //         params['TYPE_LOCATION'] = location_params[0];
+            //         params['PRODUCT_KEY'] = location_params[1];
+            //         params['URL_CLICK'] = 0;
+            //         Analytics.reportProductView(params);
+            //     }
+            // }
+            var messages = r.getMessages();
+            var offerCriteriaMessages = '';
+            if (messages) {
+                messages.forEach( function(message) {
+                    if (message.key === "offer_criteria_not_met") {
+                        offerCriteriaMessages = offerCriteriaMessages.concat('<br /><br />' +message.text + '<br /><br />');
+                    }
+                });
+            }
+            if (offerCriteriaMessages) {
+                $(document).trigger("addToCart.failure", [messages]);
+                generic.overlay.launch({
+                    content: offerCriteriaMessages,
+                    includeBackground: true,
+                    cssStyle: {
+                        width: 'auto',
+                        height: 'auto',
+                    }
+                });
+            }
+            else {
+                var resultObj = r.getData();
+                $(document).trigger("addToCart.success", [resultObj]);
+            }
+        },
+        onFailure: function(ss) {
+            var errorObjectsArray = ss.getMessages(),
+                cart_template = $('<div/>').html(Mustache.render($('script.inline-template[path="cart_confirm"]').html(), '')),
+                max_purchase_policy = $('#max-purchase-policy', cart_template),
+                prodAddedMsg = '';
+
+            $(document).trigger("addToCart.failure", [errorObjectsArray]);
+            //get specs for this... for now show the error message (most likely item count limit reached)
+
+            // Escape any html in the alert box.
+            prodAddedMsg = $('<div/>').html(errorObjectsArray[0].text).text();
+
+            // Send error to overlay
+            generic.overlay.launch({
+                // add in max purchase policy header
+                content: $('<div/>').append(max_purchase_policy.show().clone()).html() + prodAddedMsg,
+                includeBackground: true,
+                cssStyle: {
+                    width: '300px',
+                    padding: '25px'
+                },
+            });
+            //alert(prodAddedMsg);
+        }
+    });
+
+};
+
+
+site.addToFavorites = function(args) {
+
+    var params = {
+        "_SUBMIT": "alter_collection",
+        "action": "add"
+    };
+
+    var skuBaseId;
+    if (args.skuData && args.skuData.SKU_BASE_ID) {
+        skuBaseId = args.skuData.SKU_BASE_ID;
+    } else if (args.skuBaseId) {
+        skuBaseId = args.skuBaseId;
+    } else {
+        return null;
+    }
+    params.SKU_BASE_ID = skuBaseId;
+
+    var catBaseId = '';
+    if (args.skuData && args.skuData.PARENT_CAT_ID) {
+        var matchResult = args.skuData.PARENT_CAT_ID.match("[0-9]+");
+        if (matchResult) {
+            params.CAT_BASE_ID = matchResult[0];
+        }
+    }
+
+    var id = generic.jsonrpc.fetch({
+        method : 'rpc.form',
+        params: [params],
+        onSuccess:function(jsonRpcResponse) {
+            console.log("add to favorites success");
+            console.log(jsonRpcResponse.getData());
+            var d = jsonRpcResponse.getData();
+            var r = d.ac_results[0].result;
+            if (r.SUCCESS == 1 && r.KEY != 'SKU_ALREADY_IN_COLLECTION.ADD_SKU.COLLECTION.SAVE') {
+                $(document).trigger("addToFavorites.success", [r]);
+            }
+            else if (r.KEY == 'SUCCESS.ADD_SKU.COLLECTION.SAVE') {
+                $(document).trigger("addToFavorites.success", [r]);
+            }
+            else if (r.KEY == 'SKU_ALREADY_IN_COLLECTION.ADD_SKU.COLLECTION.SAVE') {
+                $(document).trigger("addToFavorites.exists", [r]);
+            }
+        },
+        onFailure: function(jsonRpcResponse) {
+            console.log("add to favorites failure");
+            console.log(jsonRpcResponse.getError());
+        }
+    });
+};
+
+site.productData = {
+  isActive: function(skuData) {
+    return skuData.INVENTORY_STATUS && skuData.INVENTORY_STATUS == 1;
+  },
+  isTempOutOfStock: function(skuData) {
+    return skuData.INVENTORY_STATUS && skuData.INVENTORY_STATUS == 2;
+  },
+  isComingSoon: function(skuData) {
+    return skuData.INVENTORY_STATUS && skuData.INVENTORY_STATUS == 3;
+  },
+  isInactive: function(skuData) {
+    return skuData.INVENTORY_STATUS && skuData.INVENTORY_STATUS == 5;
+  },
+  isSoldOut: function(skuData) {
+    return skuData.INVENTORY_STATUS && skuData.INVENTORY_STATUS == 7;
+  },
+  isShoppable: function(skuData) {
+    return site.productData.isActive(skuData) ||  site.productData.isTempOutOfStock(skuData);
+  }
+};
+
+// listen and act on for L2 inventory status updates
+$(document).bind('prodcat.status', function(e, data) {
+  if(data.result.value !== null) {
+    $(data.result.value.products).each( function () {
+      $(this.skus).each(function(i, sku){
+        // save the data somewhere
+        $(document).data(sku.SKU_ID, sku);
+      });
+    });
+    // re-initialize add-to-bag buttons so the defaults check on the latest inventory status
+    if(typeof site.spp !== 'undefined') {
+      site.spp.refreshSkuStatus();
+    }
+    if(typeof site.mpp !== 'undefined') {
+      site.mpp.refreshSkuStatus(data.result.value.products);
+    }
+  }
+});
+$(document).ready(function() {
+  $('.addZdcOfferToBag').bind('click', function() {
+    var zdc = {};
+    var outOfStock = 'out_of_stock';
+    zdc.rb = generic.rb('error_messages');
+    var offerCode = $(this).data('offer');
+    generic.jsonrpc.fetch({
+      method: 'rpc.form',
+      params: [{
+        _SUBMIT: 'offer_code',
+        OFFER_CODE: offerCode
+      }],
+      onSuccess: function(jsonRpcResponse) {
+        var msgObj = jsonRpcResponse.getMessages();
+        if(msgObj) {
+            $('#error-message').html(" ");
+            if (msgObj[0].text !== null ) {
+              $('#success-message').html(msgObj[0].text);
+              window.location.href = '/checkout/viewcart.tmpl';
+            } else {
+                generic.overlay.launch({
+                    content: $('<div/>').append(msgObj[0].text).html(),
+                    includeBackground: true,
+                    cssStyle: {
+                        width: '300px',
+                        padding: '25px'
+                    },
+                });
+            }
+        } else {
+                generic.overlay.launch({
+                    content: $('<div/>').append(zdc.rb.get('zdc_offer_used')).html(),
+                    includeBackground: true,
+                    cssStyle: {
+                        width: '300px',
+                        padding: '25px'
+                    },
+                });
+        }
+      },
+      onFailure: function(jsonRpcResponse) {
+        var errorObj = jsonRpcResponse.getError();
+        $.each(errorObj.data.messages, function(index, errorMessages) {
+          if (errorMessages.key === 'user_not_signin') {
+            generic.overlay.launch({
+                content: $('<div/>').append(zdc.rb.get('zdc_user_not_signedin')).html(),
+                includeBackground: true,
+                cssStyle: {
+                    width: '300px',
+                    padding: '25px'
+                },
+            });
+          } else if (errorMessages.key.indexOf(outOfStock) !== -1) {
+                generic.overlay.launch({
+                    content: $('<div/>').append(zdc.rb.get('zdc_out_of_stock')).html(),
+                    includeBackground: true,
+                    cssStyle: {
+                        width: '300px',
+                        padding: '25px'
+                    },
+                });
+          } else if (errorMessages.key === 'offer_criteria_not_met') {
+                generic.overlay.launch({
+                    content: $('<div/>').append(errorMessages.text).html(),
+                    includeBackground: true,
+                    cssStyle: {
+                        width: '300px',
+                        padding: '25px'
+                    },
+                });
+          }
+        });
+        var data = {};
+        data.offer_code = offerCode;
+        generic.jsonrpc.fetch({
+          method: 'offer.removeOfferByCode',
+          params: [data],
+          onBoth: function(res) {
+            var data = res.getValue();
+            $('#success-message').html(data);
+          }
+        });
+      }
+    });
+  });
+});

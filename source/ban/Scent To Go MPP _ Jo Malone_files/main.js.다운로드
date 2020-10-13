@@ -1,0 +1,377 @@
+(function ($) {
+
+/**
+ * Jo Malone base object
+ */
+Drupal.jm = {
+  areaAbove: 0,
+  areaBelow: 0,
+  contentWidth: 0,
+  contentHeight: 0,
+
+  /**
+   * Equivalent to php's is_numeric function
+   */
+  isNumeric: function(mixed_var) {
+    return (typeof(mixed_var) === 'number' || typeof(mixed_var) === 'string') && mixed_var !== '' && !isNaN(mixed_var);
+  },
+
+  /**
+   * Equivalent to php's is_object function
+   */
+  isObject: function(mixed_var) {
+    if (Object.prototype.toString.call(mixed_var) === '[object Array]') {
+      return false;
+    }
+    return mixed_var !== null && typeof mixed_var === 'object';
+  },
+
+  /**
+   * Returns the width of blocks in the top-right region that hover will line up to
+   */
+  getTopRightWidth: function() {
+    // only run this once
+    if (typeof this.getTopRightWidth.width == 'undefined') {
+      var sum = 0,
+        margin_left = '';
+
+      // for now, top right width does *not* include complimentary benefits
+      $('.top-right').children('.block:not(.block-template-complimentary-benefits)').each(function() {
+        margin_left = $(this).css('margin-left'); // take into account the *one* margin we don't need
+        sum += $(this).outerWidth(true);
+      });
+
+      margin_left = margin_left.replace("px", ""); // remove the "px" from the returned value
+      this.getTopRightWidth.width = sum - margin_left;
+    }
+    return this.getTopRightWidth.width;
+  },
+
+  /**
+   * Returns the height of the browser viewport area
+   */
+  getWindowWidth: function() {
+    return $(window).width();
+  },
+
+  /**
+   * Returns the height of the browser viewport area
+   */
+  getWindowHeight: function() {
+    return $(window).height();
+  },
+
+  /**
+   * Returns the height of the admin toolbar
+   */
+  getToolbarHeight: function() {
+    var h = $('#toolbar').outerHeight(true);
+    return this.isNumeric(h) ? h : 0 ;
+  },
+
+  /**
+   * Returns the height of the #top region
+   */
+  getHeaderHeight: function() {
+    var h = $('#top').outerHeight(true);
+    return this.isNumeric(h) ? h : 0 ;
+  },
+
+  /**
+   * Returns the height of the #footer region
+   */
+  getFooterHeight: function() {
+    var h = $('#footer').outerHeight(true);
+    return this.isNumeric(h) ? h : 0 ;
+  },
+
+  /**
+   * Returns the available vertical real estate that the content area can use
+   * Viewport height - Toolbar height - Header height - Footer height = Content area height
+   */
+  getContentAreaDimensions: function() {
+    return {
+      window: { width: this.getWindowWidth(), height: this.getWindowHeight() },
+      width: this.contentWidth,
+      height: this.contentHeight,
+      above: this.areaAbove,
+      below: this.areaBelow
+    };
+  },
+
+  /**
+   * Set the dimensions of the available real estate for the content area
+   */
+  setContentAreaDimensions: function() {
+    this.contentWidth = this.getWindowWidth();
+    this.contentHeight = this.getWindowHeight() - this.getToolbarHeight() - this.getHeaderHeight() - this.getFooterHeight();
+    this.areaAbove = this.getToolbarHeight() + this.getHeaderHeight();
+    this.areaBelow = this.getFooterHeight();
+  },
+
+  /**
+   * scrollTo wrapper that works in IE8 and < jQuery 1.7.2
+   * @param {Object} $elem element to scrollto
+   * @param {String} duration in ms of animation duration
+   * @param {STring} offset in px of the offset from the top of the page (ie toolbars)
+   * @param {Function} onAfterFunction to call when animation is complete
+   */
+  scrollToLegacy: function($elem, duration, offset, onAfterFunction) {
+    // defaults
+    var duration = typeof duration !== 'undefined' ? duration : 500,
+      scrollObj;
+
+      // set simple defaults for our top offset
+      if (typeof offset !== 'undefined') {
+        var offsetval = offset;
+      }
+      else if (site && site.mpp) {
+        var offsetval = site.mpp.ux.top_offset;
+      }
+      else {
+        var offsetval = -(parseInt($('.top-right').css('min-height'),10)) - $('#toolbar').height();
+      }
+
+    ///
+     // This was a special handling of IE8 scroll issues. It appears to have
+     // gone away with recent site code improvements. I'm leaving this abstraction
+     // here for posterity
+     ///
+
+    // if ($.browser.msie  && parseInt($.browser.version, 10) === 8) {
+    //   // alert('we are in ie8');
+    //   // ie8 handles scrollTop in various ways
+    //   var scrolltop = (document.documentElement && document.documentElement.scrollTop) || document.body.scrollTop,
+    //     // from element to top of document (modern browsers) or window (ie8)
+    //     eltop = $elem.offset().top,
+    //     // ie8 apparently needs a doubling of the offset AND measures offset from the window instead of doc
+    //     scrollObj = eltop + scrolltop + offsetval;
+    //     // alert(scrollObj);
+    // }
+    // // normal value
+    // else {
+    //   scrollObj = $elem;
+    // }
+
+    // this is the reduction of the above, now that it randomly works
+    scrollObj = $elem;
+
+    // Part of the destruction from above
+    // scrollTo is smart enough to test whether scrollObj is jquery element or number from top
+    // $(window).scrollTo(scrollObj, duration, {
+    //   offset: offsetval,
+    //   onAfter: onAfterFunction
+    //  });
+
+    // This is a better scrollTo. It works in modern desktop/mobile browsers and IE8
+    var scrollElem = $('body, html'),
+      eltop = $elem.offset().top,
+      scrollObj = eltop + offsetval;
+
+    $(scrollElem).animate(
+      {scrollTop: scrollObj},
+      duration,
+      onAfterFunction
+    );
+  },
+
+  /* get URL query param value. Pass in the url as  oTarget and the query name as sVar */
+  getURLParam: function(oTarget, sVar) {
+    return decodeURI(oTarget.search.replace(new RegExp("^(?:.*[&\\?]" + encodeURI(sVar).replace(/[\.\+\*]/g, "\\$&") + "(?:\\=([^&]*))?)?.*$", "i"), "$1"));
+  }
+};
+
+
+/**
+ * Shifts elements around based on the existence of the Drupal toolbar
+ */
+Drupal.behaviors.doToolbarAdjustments = {
+  doAdjustments: function() {
+    var toolbarHeight = Drupal.jm.getToolbarHeight();
+    if ($('#toolbar').hasClass('mobile')) {
+      $('.top-right, .bridal-ribbon-top').css('top', '0px');
+      } else if (!$('body').hasClass('toolbar-drawer')) {
+      $('.top-right, .bridal-ribbon-top').css('top', toolbarHeight + 'px');
+    }
+    var $topElement = $('#top');
+    if ($topElement.css('position') == 'fixed') {
+      $topElement.css({ 'top': toolbarHeight + 'px' });
+    }
+  },
+
+  attach: function(context, settings) {
+    var thisBehavior = this;  // variable scope workaround
+    thisBehavior.doAdjustments();
+
+    $(window).resize(function() {
+      thisBehavior.doAdjustments();
+    });
+  }
+};
+
+/**
+ * Set first/last classes on groups of blocks
+ */
+Drupal.behaviors.setBlockClasses = {
+  attach: function(context, settings) {
+    $('#header .top-right').children('.block').first().addClass('first').end().last().addClass('last');
+  }
+};
+
+/**
+ * Reset the stored dimensions of the content area
+ *
+ * This behavior sets the width/height values once, then allows templates and/or themes to request the value
+ *  using the Drupal.jm.getContentAreaDimensions() method.
+ * @TODO: determine if this should be moved to pc/main.js
+ */
+Drupal.behaviors.resetContentAreaDimensions = {
+  attach: function(context, settings) {
+    Drupal.jm.setContentAreaDimensions();
+
+    $(window).resize(function() {
+      Drupal.jm.setContentAreaDimensions();
+    });
+  }
+};
+
+/**
+ * Apply custom dropdowns seen in both desktop and mobile comps
+ */
+Drupal.behaviors.applyDropdowns = {
+  attach: function(context, settings) {
+    var offerValidTime;
+    var gameOfferCookie = $.cookie('DG_OFF');
+    var offerInterval;
+    // trigger plugin
+    $('.custom-dropdown').jomaloneDropdown();
+    if (gameOfferCookie !== undefined) {
+      gameOfferCookie = JSON.parse(gameOfferCookie);
+      offerInterval = setInterval(function() {
+        offerValidTime = new Date();
+        if (offerValidTime.getTime() > gameOfferCookie.time_stamp) {
+          generic.jsonrpc.fetch({
+            method: 'offer.removeOfferByCode',
+            params: [{'offer_code': gameOfferCookie.offer_code}],
+            onSuccess: function(response) {
+              var offerResponse = response.getValue();
+              if ((typeof(offerResponse) === 'undefined') || !offerResponse){
+                return;
+              }
+              if (offerResponse.offer_code === gameOfferCookie.offer_code) {
+                $.removeCookie('DG_OFF', { path: '/' });
+                clearInterval(offerInterval);
+              }
+            }
+          });
+        }
+      }, 60000);
+    }
+  }
+};
+
+/**
+ * Allow divs with menu-break class to break menus by applying their class to their parent.
+ */
+Drupal.behaviors.menuBreakers = {
+  attach: function(context, settings) {
+    $('.menu-break', context).parent().addClass('menu-break').parent().addClass('menu-break');
+  }
+};
+
+/**
+ * Initialize device-toggle link.
+ */
+Drupal.behaviors.jmClientToggle = {
+  attach: function (context, settings) {
+    // wire device toggle links
+    if(site.client && site.client.controls) {
+      site.client.controls();
+    }
+  }
+};
+
+
+/**
+ * A method that tells if an object is a DOM element
+ * @param o  The object to test
+ * @return {Boolean} returns true if o is a DOM element, false if not
+ *
+ */
+Drupal.isDOMElement = function (o) {
+  try {
+    //Using W3 DOM2 (works for FF, Opera and Chrome)
+    o instanceof HTMLElement;
+  }
+  catch(e){
+    //Browsers not supporting W3 DOM2 don't have HTMLElement and
+    //an exception is thrown and we end up here. Testing some
+    //properties that all elements have. (works on IE7)
+    // memoize the non Dom way to avoid testing overhead in future
+    Drupal.isDOMElement = function (o) {
+      return (o && typeof o === "object" && o.nodeType && o.nodeType === 1 && typeof o.nodeName === "string");
+    };
+
+    return Drupal.isDOMElement(o);
+  }
+  // If we get here the DOM2 way worked
+  // memoize the Dom2 way to avoid testing overhead in future
+  Drupal.isDOMElement = function (o) {
+    return o instanceof HTMLElement;
+  };
+
+  return Drupal.isDOMElement(o);
+};
+
+
+/**
+ * A method that tells if an object is a DOM Node
+ * @param o  The object to test
+ * @return {Boolean} returns true if o is a DOM Node, false if not
+ *
+ */
+Drupal.isDOMNode = function (o) {
+  try {
+    //Using W3 DOM2 (works for FF, Opera and Chrome)
+    o instanceof Node;
+  }
+  catch(e){
+    //Browsers not supporting W3 DOM2 don't have Node and
+    //an exception is thrown and we end up here. Testing some
+    //properties that all elements have. (works on IE7)
+    // memoize the non Dom way to avoid testing overhead in future
+    Drupal.isDOMNode = function (o) {
+      return (o && typeof o === "object" && typeof o.nodeType === "number" && typeof o.nodeName==="string");
+    };
+
+    return Drupal.isDOMNode(o);
+  }
+  // If we get here the DOM2 way worked
+  // memoize the Dom2 way to avoid testing overhead in future
+  Drupal.isDOMNode = function (o) {
+    return o instanceof Node;
+  };
+
+  return Drupal.isDOMNode(o);
+};
+
+Drupal.returnJQElem = function(elem) {
+  if (typeof elem === 'string') {
+    return $('#' + elem);
+  }
+
+  if (Drupal.isDOMElement(elem)) {
+    return $(elem);
+  }
+
+  if (elem instanceof jQuery)  {
+    if(!elem.length) {
+      throw new TypeError();
+    }
+    return elem.first();
+  }
+
+  throw new TypeError();
+};
+
+})(jQuery);

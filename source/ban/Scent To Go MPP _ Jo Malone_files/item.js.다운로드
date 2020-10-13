@@ -1,0 +1,73 @@
+(function ($, Drupal, window, document, undefined) {
+
+Drupal.behaviors.gnavItemV1 = {
+  attach: function (context, settings) {
+    var template_class_name = 'gnav-item-v1';
+    if($('html').hasClass('no-csstransitions')){
+        var gnavContent = $('.gnav-item-content');
+        var currentGnav;
+        gnavContent.css('display', 'none');
+        gnavContent.css('visibility', 'visible');
+        gnavContent.css('opacity', '1');
+        $('.gnav-item-v1').mouseenter(function() {
+            if(currentGnav !== undefined){
+                currentGnav.hide();
+            }
+            $(this).find('.gnav-item-content').fadeIn('slow');
+            currentGnav = $(this).find('.gnav-item-content');
+        });
+        $('.gnav-item-v1').mouseleave(function(){
+            currentGnav.fadeOut('slow');
+        });
+    }
+    // Add/remove a "hover" class when the user rolls their mouse over the block layer
+    $('.' + template_class_name, context).hover(
+      function () {
+        $(this).closest('.block').andSelf().addClass('hover');
+        // Set the width of the blocks to be equal to the total width of all nav blocks
+        // Delay running this until user hover since item widths are not necessarily set
+        // if ($.isFunction(Drupal.jm.getTopRightWidth)) {
+        //   $('.' + template_class_name).children('.gnav-item-content').css({
+        //     width: Drupal.jm.getTopRightWidth() + 'px'
+        //   });
+        // }
+        $currentGnav = $(this).find('.js-gnav-item-content');
+        // site.getKeycode and site.restrict_navigation is used only in NA locale for ADA compliance.
+        if (typeof site.restrict_navigation === "function") {
+          site.restrict_navigation($currentGnav);
+        }
+      },
+      function () {
+        $(this).closest('.block').andSelf().removeClass('hover');
+      }
+    );
+    // site.getKeycode and site.restrict_navigation is used only in NA locale for ADA compliance.
+    if (typeof site.restrict_navigation === "function") {
+      var $curr = $('.js-gnav-item-title  a');
+      $curr.focusin(function(e) {
+        var $this = $(this);
+        var $gnav = $this.parents('.js-gnav-item-v1');
+        e.preventDefault();
+        if (!$gnav.hasClass('js-gnav-cart-dropdown')) {
+          $this.attr('aria-expanded', $(this).attr('aria-expanded') === 'true' ? 'false' : 'true');
+          $gnav.trigger('mouseenter');
+        }
+        $('.js-gnav-item-content').focus();
+      }).focusout(function(e) {
+          $(this).parents('.js-gnav-item-v1:not(.hover)').removeAttr('aria-expanded');
+      }).keydown(function(e) {
+          if (e.shiftKey) {
+            $(this).parents('.js-gnav-item-v1').removeClass('hover');
+          }
+      });
+    }
+
+    // For anything that displays the popup block without hovering, the "close" button appears.
+    // This click event removes the "active" and "hover" classes, thereby closing the layer.
+    // $('.' + template_class_name).children('.gnav-item-content').children('a.close').click(function() {
+    //   $(this).closest('.' + template_class_name).closest('.block').andSelf().removeClass('active hover');
+    // });
+  }
+};
+
+})(jQuery, Drupal, this, this.document);

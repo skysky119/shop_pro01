@@ -1,0 +1,64 @@
+var rb = rb || {};
+(function($) {
+  Drupal.behaviors.bespoke_subline = {
+    attach: function() {
+      var bespoke_products = $.find('.bespoke-collection-wrapper');
+      var bespoke_review = $.find('.bespoke-gifting-review');
+      if (page_data && page_data.hasOwnProperty('catalog') && page_data.catalog.hasOwnProperty('spp') && page_data.catalog.spp.hasOwnProperty('rpcdata')) {
+        if (bespoke_products.length || bespoke_review.length) {
+          var collectionData = page_data.catalog.spp.rpcdata;
+          if (collectionData.products) {
+            $.each(collectionData.products, function() {
+              var prod_id = this['PRODUCT_ID'];
+              var prod_name = '<a href="' + this['url'] + '">' + this['SUB_LINE'] + '</a>';
+              var prod_sub = this['SUB_LINE'];
+              $.each($('.mppgiftfinder_product'), function(index, element) {
+                if ($(element).attr('data-product-id') === prod_id) {
+                  $(element).find('.bespoke-quickshop').attr('data-prod-sub', prod_sub);
+                  $(element).find('.product__info .product__info--hdr a.js-product-link').html(prod_name)[index];
+                  return;
+                }
+              });
+            });
+            // product name translation for  bespoke review page
+            $.fn.cartprodNameTrans = function() {
+              var collectionData = page_data.catalog.spp.rpcdata;
+              $.each(collectionData.products, function() {
+                var prod_id = this['PRODUCT_ID'];
+                var prod_sub = this['SUB_LINE'];
+                $.each($('.add-luxury-carousel-slide'), function(index, element) {
+                  if ($(element).find('.js-lux-add-to-gift').attr('data-productid') === prod_id) {
+                    $(element).find('.carousel-slide__name').html(prod_sub);
+                  }
+                });
+              });
+            };
+          }
+        }
+      }
+      $(document).on('bespoke:getCollectionItems:success', function() {
+        setTimeout(function() {
+          $.fn.cartprodNameTrans();
+        }, 0);
+      });
+      $(document).on('click', '.bespoke-quickshop', function() {
+        $('.quickshop_wrapper').find('.quickshop-container .product-grid .product-title').html($(this).attr('data-prod-sub'));
+      });
+      $(document).on('click', '.js-tray-toggle-open', function() {
+        $.each($('.gift-items__item'), function(index, element) {
+          $(element).find('.gift-items__item--name').html(Drupal.behaviors.bespokeGiftingTray.collection.skus[index].product.SUB_LINE);
+        });
+      });
+
+      $(window).load(function() {
+        var bespoke_products = $.find('.bespoke-collection-wrapper');
+        var bespoke_review = $.find('.bespoke-gifting-review');
+        if (bespoke_products.length || bespoke_review.length) {
+          $.fn.cartprodNameTrans();
+          $('.bespoke-collection-wrapper .product__engrave__mobile.show-for-mobile div.engraving-more-information').hide();
+          $('.bespoke-collection-wrapper .product__engrave__mobile.show-for-mobile a.add_engraving_msg').hide();
+        }
+      });
+    }
+  };
+})(jQuery);

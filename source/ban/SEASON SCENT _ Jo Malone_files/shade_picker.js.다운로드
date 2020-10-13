@@ -1,0 +1,73 @@
+var site = site || {};
+
+site.shadePicker = function(args) {
+    var self = this;
+    this.productId = args.productData.PRODUCT_ID;
+
+    // sort SKU data into a hash with SKU_BASE_ID as keys for quick retrieval
+    var skus = {};
+    for (var i=0; i<args.productData.skus.length; i++) {
+        var s = args.productData.skus[i];
+        skus[s.SKU_BASE_ID] = s;
+    }
+    var $swatches = $("a.swatch[data-productid=" + this.productId + "]");
+    
+    $swatches.bind( "click", function(e) {
+        e.preventDefault();
+        var $swatch = $(this);
+        var selectedSkuId = $swatch.attr("data-skubaseid");
+        var selectedSkuData = skus[selectedSkuId];
+        $swatch.trigger('sku:select', [selectedSkuData]);
+    });
+    
+    var selectSku = function(skuData) {
+        // console.log(skuData.SKU_BASE_ID);
+        $swatches.removeClass("selected");
+        $swatches.filter("[data-skubaseid=" + skuData.SKU_BASE_ID +  "]").addClass("selected");
+    }
+
+    $(document).bind('sku:select', function(e, skuData) {
+        if (skuData.PRODUCT_ID == self.productId) {
+            selectSku(skuData);
+        }
+    })
+    selectSku(args.productData.skus[0]);
+    
+};
+
+site.skuMenu = function(args) {
+    
+    if (args.productData.skus.length < 2) {
+        return null;
+    }
+    var self = this;
+    this.productId = args.productData.PRODUCT_ID;
+
+    // sort SKU data into a hash with SKU_BASE_ID as keys for quick retrieval
+    var skus = {};
+    for (var i=0; i<args.productData.skus.length; i++) {
+        var s = args.productData.skus[i];
+        skus[s.SKU_BASE_ID] = s;
+    }
+
+    var $skuMenu = $("select.sku_select[data-productid=" + this.productId + "]");
+
+    $skuMenu.bind('change', function(e) {
+        var selectedSkuId = $skuMenu.val();
+        var selectedSkuData = skus[selectedSkuId];
+        $skuMenu.trigger('sku:select', [selectedSkuData]);
+    });
+
+
+    var selectSku = function(skuData) {
+        $skuMenu.val(skuData.SKU_BASE_ID);
+    };
+    
+    $(document).bind('sku:select', function(e, skuData) {
+        if (skuData.PRODUCT_ID == self.productId) {
+            selectSku(skuData);
+        }
+    });
+    selectSku(args.productData.skus[0]);
+    
+};

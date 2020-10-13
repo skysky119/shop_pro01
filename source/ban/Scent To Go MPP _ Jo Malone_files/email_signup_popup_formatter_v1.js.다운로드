@@ -1,0 +1,131 @@
+var generic = generic || {};
+var site = site || {};
+(function ($) {
+  Drupal.behaviors.emailSignupPopupV1 = Drupal.behaviors.emailSignupPopupV1 || {};
+  Drupal.behaviors.emailSignupPopupV1.attach = function (context, settings) {
+    if (!site.globalnav  || typeof site.globalnav.initEmailSignup !== "function") {
+      return;
+    }
+    var discHtml,
+      useCookie = false,
+      hasGenCookie = (typeof generic === 'object' && typeof generic.cookie === 'function'),
+      cookieValue = "1",
+      $body = $('body'),
+      $attachHere = ($body.hasClass('device-mobile')) ? $body : $('#header'),
+      popup = $('#footer').find('.email-signup-popup'),
+      popupBlock = popup.parents('.block.block-nodeblock'),
+      disclaimer = popup.find('.disclaimer-layer'),
+      noSeshCook = popup.attr('data-session-cookie-disabled'),
+      daysOverride =  (noSeshCook && noSeshCook === "1") ?  popup.attr('data-frequency') : 0,
+      cookieName = popup.attr('data-cname') || "EMAIL_SIGNUP_POPUP",
+      noOfDays = 0;
+    function cleanUp() {
+      popup.remove();
+      popupBlock.remove();
+    }
+    function getHrefParams(href) {
+      var pair, splits,
+        pairs = {},
+        q = href.lastIndexOf('?');
+      if (q !== -1 && q !== href.length - 1) {
+        splits = href.slice(q + 1).split('&');
+        for (var i = 0, l = splits.length; i < l; i++) {
+          pair = splits[i].split('=');
+          pairs[pair[0]] = pair[1];
+        }
+      }
+      return pairs;
+    }
+    if (hasGenCookie) {
+      useCookie = getHrefParams(location.href);
+      useCookie = (useCookie.signuppop && (useCookie.signuppop === '1' || useCookie.signuppop === '1#')) ? false : true;
+      if (generic.cookie("LOCALE") == null) {
+        return;
+      }
+      $('.country-list .country-link').click(function() {
+        generic.cookie(cookieName, '0',  { path: '/', expires: null });
+      });
+      if (useCookie && typeof generic.cookie(cookieName) !== 'undefined' && generic.cookie(cookieName) == 1) {
+        cleanUp();
+        return;
+      }
+      if (daysOverride) {
+        if (daysOverride === 'none') {
+          useCookie = false;
+        } else {
+          noOfDays = (typeof daysOverride === "number") ? daysOverride : parseInt(daysOverride, 10);
+          if (isNaN(noOfDays)) {
+            noOfDays = 0;
+          }
+        }
+      }
+    }
+    function closePopup() {
+      popup.fadeOut(300, function() {
+        cleanUp();
+      });
+    }
+    function showDisclaimer(e) {
+      e.preventDefault();
+      disclaimer.css('display', 'block');
+      disclaimer.find('.disclaimer-close-btn').off('click').on('click', hideDisclaimer);
+    }
+    function hideDisclaimer(e) {
+      e.preventDefault();
+      disclaimer.css('display', 'none');
+    }
+    function runPopup() {
+      if (popup.length) {
+        if(hasGenCookie && useCookie) {
+          var cProps = {path: '/'},
+            cExpires = (noOfDays > 0) ? new Date() : null;
+          if (cExpires) {
+            cExpires.setTime(cExpires.getTime() + (noOfDays * (1000 * 60 * 60 * 24)));
+            cProps.expires = cExpires;
+          }
+          generic.cookie(cookieName, cookieValue, cProps);
+        }
+        popup.prependTo($attachHere).fadeIn(500);
+        popup.find('.close').click(function (e) {
+          e.preventDefault();
+          closePopup();
+        });
+        if (popup.hasClass('close')) {
+          popup.click(function (e) {
+            if (e.target !== e.currentTarget) {
+              return;
+            }
+            closePopup();
+            e.preventDefault();
+          });
+        }
+        if (disclaimer.length) {
+          popup.find('.disclaimer-link').on('click', showDisclaimer);
+          discHtml = disclaimer.html();
+          if (discHtml.search('%DYNAMIC_EXPIRE%') > -1)  {
+            var m_names = ["January", "February", "March",
+              "April", "May", "June", "July", "August", "September",
+              "October", "November", "December"];
+            var today = new Date();
+            var todayPlus14 = new Date();
+            todayPlus14.setDate(today.getDate()+14);
+            var daynum = todayPlus14.getDate();
+            var sup = "";
+            if (daynum == 1 || daynum == 21 || daynum ==31) {
+              sup = "st";
+            } else if (daynum == 2 || daynum == 22) {
+              sup = "nd";
+            } else if (daynum == 3 || daynum == 23) {
+              sup = "rd";
+            } else {
+              sup = "th";
+            }
+            var dateStr = m_names[todayPlus14.getMonth()] + " " + daynum + sup + ", " + todayPlus14.getFullYear();
+            disclaimer.html(discHtml.replace('%DYNAMIC_EXPIRE%',dateStr));
+          }
+        }
+      }
+    }
+    runPopup();
+  };
+}(jQuery));

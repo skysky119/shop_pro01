@@ -1,0 +1,249 @@
+@charset "utf-8";
+
+/* font-family: 'Noto Serif KR', serif; */
+
+/* 초기화 설정 */
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body,
+html {
+    width: 100%;
+    min-width: 1280px;
+    font-family: 'Noto Serif KR', serif;
+}
+
+ul {
+    list-style: none;
+}
+
+a {
+    text-decoration: none;
+    user-select: none;
+}
+
+/* 공통 스타일 */
+.wrap {
+    width: 100%;
+}
+
+.hd {
+    clear: both;
+    width: 100%;
+    position: fixed;
+    background-color: #fff;
+}
+
+.hd_top_wrap,
+.hd_bottom_wrap {
+    clear: both;
+    width: 100%;
+}
+
+.hd_top_wrap {
+    border-bottom: 1px solid #000;
+    height: 30px;
+    border-top: 1px solid #000;
+}
+
+.hd_bottom_wrap {
+    height: 70px;
+    margin-bottom: 0;
+    border-bottom: solid 1px #000;
+    padding-bottom: 15px;
+}
+
+.tnb {
+    width: 1280px;
+    margin: 0 auto;
+}
+
+.left {
+    float: left;
+    border-right: 1px solid #333;
+}
+
+.tnb .right {
+    float: right;
+    border-left: 1px solid #333;
+}
+
+.tnb ul li {
+    float: left;
+}
+
+.tnb ul li a {
+    font-size: 15px;
+    color: #000;
+    display: block;
+    height: 30px;
+    line-height: 30px;
+}
+
+.tnb .left li a {
+    padding-right: 20px;
+    border-left: 1px solid #000;
+    padding-left: 20px;
+}
+.left :hover {
+    background-color: #333;
+    color : #fff;
+}
+
+.right :hover {
+    background-color: #333;
+    color : #fff;
+}
+
+.right li { 
+    padding-right: 20px;
+    border-right: 1px solid #333;
+}
+
+.tnb .right li a {
+    padding-left: 20px;
+}
+
+.tnb .right li a span {
+    display: block;
+    float: left;
+}
+
+.count {
+    background-color: #222;
+    color: #fff;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    font-size: 12px;
+    text-align: center;
+    border-radius: 10px;
+    margin-top: 5px;
+    margin-left: 3px;
+}
+
+.hd_top_wrap .btn {
+    border-left: 1px solid #000;
+    margin-left: 20px;
+    padding-left: 10px;
+    
+    padding-right: 10px;
+}
+
+.tnb .right li.btn a {
+    padding-left: 0;
+}
+
+.gnb {
+    width: 1280px;
+    margin: 0 auto;
+    position: relative;
+}
+
+.logo {
+    position: absolute;
+    left: 0;
+    top: 15px;
+    padding-left: 20px;
+    
+}
+
+.menu {
+    width: 390px;
+    margin: 15px auto;
+    padding-top: 12px;
+    
+}
+
+.menu li {
+    float: left;
+    padding: 12px;
+    padding-left: 16px;
+    
+}
+
+.menu li a {
+    color: #000;
+    font-size: 18px;
+    border: 2px solid #fff;
+}
+
+.menu li a:hover {
+    background-color: #000;
+    color: #fff;
+    border-radius: 7px;
+}
+
+.right_icon {
+    position: absolute;
+    right: 0;
+    top: 5px;
+    display: block;
+}
+
+
+/* 공통 스타일 끝 */
+
+
+/* 푸터 스타일 */
+.ft {
+    clear: both;
+    width: 100%;    
+    display: block;    
+    padding-top: 100px;
+    border-top: 1px solid #333;
+}
+
+.ft_wrap {
+        
+    margin: 0 auto;        
+    padding-bottom: 100px;
+}
+
+.fnb {
+    clear: both;
+    width: 350px;
+    margin: 0 auto;
+}
+
+.fnb li {
+    padding: 6px;
+    float: left;
+}
+
+.fnb li a {
+    display: block;
+    padding: 8px;
+    background: #ccc;
+    color: #000;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
+.copyright {
+    clear: both;
+    text-align: center;
+    line-height: 30px;
+    padding-bottom: 20px;
+}
+
+
+/* 상하단 리본 장식 */
+.page_decoration {
+    clear: both;
+    z-index: 99;
+}
+
+.ribbon_top {
+    position: fixed;
+    top: 31px;
+    left: 0;
+}
+
+.ribbon_bottom {
+    position: fixed;
+    bottom: 0px;
+    right: 0;
+}

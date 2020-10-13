@@ -1,0 +1,166 @@
+var generic = generic || {};
+generic.flash = {
+    abort: false,
+    swfObject : swfobject,
+    defaults : {
+        xist : {
+            file: "/flash/expressInstall.swf",
+            url: "http://www.adobe.com/go/getflashplayer",
+            image: "http://www.adobe.com/images/shared/download_buttons/get_flash_player.gif"
+        },
+        attr : {
+            playerversion: "9.0.28",
+            width: "100%",
+            height: "100%",
+            hspace: 0,
+            vspace: 0,
+            align: "top"
+        },
+        params : {
+            wmode: "transparent",
+            quality: "high",
+            menu: "true",
+            swliveconnect: "true",
+            allowscriptaccess: "always",
+            scale: "noScale",
+            allowfullscreen: "true"
+        }
+    },
+
+    embed: function (attr, params, placeholderId) {
+        if (generic.flash.abort) return;
+
+        if ( !document.getElementById(placeholderId) ) {
+            // console.log("generic.flash.embed: Element doesnt exist");
+            return null;
+        }
+
+        //params = generic.mixin(generic.flash.defaults.params, params); // old ref
+        params = $.extend(generic.flash.defaults.params, params);
+        //attributes = generic.mixin(generic.flash.defaults.attr, attr); // old ref
+        var attributes = $.extend(generic.flash.defaults.attr, attr);
+        if (typeof params.flashvars != "string") {
+            params.flashvars = $.param(params.flashvars);
+        }
+
+        // version check
+        if (generic.flash.swfObject.hasFlashPlayerVersion(attributes.playerversion)) {
+            generic.flash.swfObject.addDomLoadEvent(function() {
+                generic.flash.swfObject.createSWF(attributes,params,placeholderId);
+            });
+            return;
+        }
+
+        //content if flash doesn't embed
+        var altid = attributes.altcontentid;
+        var defaultalt = $(".noflash", '#' + placeholderId);
+        var altcontent = altid ? ($(altid) ? $(altid) : false) : (!!defaultalt.length ? defaultalt[0] : false);
+        if (altcontent) { // if hidden alternate content
+            altcontent.style.visibility = "visible";
+            altcontent.style.display = "block";
+        }
+    },
+
+    /**
+     * @namespace favorites contains favorites-related methods that are called by Action Script.
+     * @memberOf generic.flash
+     */
+    favorites: {
+        /* Used by Action Script to add items to a collection. Response data
+         * is returned via a callback function.
+         * @param args {object}
+         * @param args.movieName {String} the value of the embed/object tag's name attribute
+         * @param args.callback {String} the name that the container (the browser) uses to access the callback Function
+         * @param args.skuBaseId {String} the value of the SKU_BASE_ID field for the SKU that is to be added
+         * @methodOf generic.flash.favorites
+         */
+        add: function (args) {
+             var options = $.extend( {
+                 movieName : "",
+                 callback: "",
+                 skuBaseId: ""
+             }, args);
+
+             if ( options.skuBaseId.length < 1 ) {
+                 return null;
+             }
+             if ( !generic || !generic.checkout || !generic.checkout.cart ) {
+                 return null;
+             }
+             var cartObj = generic.checkout.cart;
+
+             var callbackFn = function(options, responseObj) {
+                 // console.log(responseObj.getMessages());
+                 if ( options.movieName.length > 1 &&
+                         document[options.movieName] &&
+                         document[options.movieName][options.callback] &&
+                         typeof document[options.movieName][options.callback] === "function" ) {
+                     if (responseObj.getMessages() || responseObj.getError()) {
+                         document[options.movieName][options.callback](responseObj.getMessages());
+                     }
+                 }
+             }.curry(options);
+
+            cartObj.updateCart({
+                params: {
+                    skus: [options.skuBaseId],
+                    itemType: "favorites",
+                    action: "add"
+                },
+                onSuccess: callbackFn,
+                onFailure: callbackFn
+            });
+         }
+     },
+
+    /**
+     * @namespace cart contains cart-related methods that are called by Action Script.
+     * @memberOf generic.flash
+     */
+    cart: {
+        /* Used by Action Script to add items to user's shopping cart. Response data
+         * is returned via a callback function.
+         * @param args {object}
+         * @param args.movieName {String} the value of the embed/object tag's name attribute
+         * @param args.callback {String} the name that the container (the browser) uses to access the callback Function
+         * @param args.skus {Array} the value of the SKU_BASE_ID field for each SKU that is to be added
+         * @param args.quantity: {Number} the quantity of items that will be added to the cart.
+         * @methodOf generic.flash.cart
+         */
+        add: function (args) {
+            var options = $.extend( {
+                movieName : "",
+                callback: "",
+                skus: [],
+                quantity: 1
+            }, args);
+            if ( options.skus.length < 1 ) {
+                return null;
+            }
+            if ( !generic || !generic.checkout || !generic.checkout.cart ) {
+                return null;
+            }
+            var cartObj = generic.checkout.cart;
+            var callbackFn = function(options, responseObj) {
+                if ( options.movieName.length > 1 &&
+                        document[options.movieName] &&
+                        document[options.movieName][options.callback] &&
+                        typeof document[options.movieName][options.callback] === "function" ) {
+                    if (responseObj.getData()) {
+                        document[options.movieName][options.callback](responseObj.getData().ac_results);
+                    } else if (responseObj.getError()) {
+                        document[options.movieName][options.callback](responseObj.getMessages());
+                    }
+                }
+            }.curry(options);
+            cartObj.updateCart({
+                params: {
+                    skus: options.skus,
+                    INCREMENT: 1
+                },
+                onSuccess: callbackFn,
+                onFailure: callbackFn
+            });
+        }
+    }
+};

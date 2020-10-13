@@ -1,0 +1,29 @@
+
+generic.user = (function(){
+    var data = {};
+    var that = {
+
+        getUser: function(args) {
+            return data;
+        },
+
+        setUser: function(userData) {
+            if (userData != null) {
+                $.extend(data, userData)
+            }
+        },
+
+        isSignedIn: function() {
+            return ( data.signed_in ? true : false );
+        }
+
+    };
+    return that;
+}() );
+
+// log out user after 15 minutes on secure pages
+if (document.location.protocol == 'https:') {
+    window.setTimeout(function() {
+        document.location.href = '/account/signin.tmpl?_SUBMIT=signout&timeout=1';
+    } , 15 * 60 * 1000);
+}
