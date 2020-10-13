@@ -15,17 +15,21 @@
     .page_tit li a:link { color: black; cursor: auto;}
     .page_tit li a:visited { color: black; user-select: none; cursor: none;}
 
-    .btn_group { clear: both; display: block; float: left; width: 1280px; line-height: 50px; margin: 0 auto; margin-top: 30px;}
-
-    .item_tit { font-size: 20px; text-align: center;}
-    .item_com { font-size: 16px; text-align: center;}
+    .btn_group { clear: both; display: block; float: left; width: 1280px; 
+          margin-top: 30px ; }
 
     .item_box { clear: both; }
-    .item_box li { float: left; margin-right: 160px ; width: 320px;
-        height: 300px; margin-top: 150px;  }
+    .item_box li { float: left; margin-right: 300px ; width: 150px;
+        height: 200px; margin-top: 70px; margin-bottom: 250px;}
+    
+    .item_box li img { display:block; width: 220px; height: 280px; margin-left: 50px;}
     .item_box ul li:nth-child(3n) { margin-right: 0; }
-    .item_box li img { display:block; width: 220px; margin-left: 50px;}
     .item_box ul { float:left; display:none; }
+        .item_box ul:checked{ width: 1280px; }
+
+
+    .item_tit { width: 150px; margin-left: 80px; font-size: 22px; text-align: center;}
+    .item_com { margin-left: 110px; margin-top: 15px;  font-size: 24px; text-align: center;}
 
     .ra_item { display: none; }
     #ra0:checked ~ .item_box ul { display:block;  }
@@ -34,6 +38,7 @@
     #ra3:checked ~ .item_box .item3 { display:block; }
     #ra4:checked ~ .item_box .item4 { display:block; }
     #ra5:checked ~ .item_box .item5 { display:block; }
+
     .lb_box { clear:both; }
     .lb_box li { float:left; }
     .lb_box li label { display:block; width: 90px; height: 36px; 
@@ -49,7 +54,7 @@
     .content {
     clear: both;
     width: 1280px;
-    height: 2450px;    
+    height: auto;    
     margin: 0 auto;
     }
 
